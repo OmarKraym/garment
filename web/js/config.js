@@ -4,6 +4,6 @@ export const CONFIG = {
   supabaseUrl: "https://vtbenbngmpwzcqmixtzb.supabase.co",
   supabaseAnonKey: "sb_publishable_Zx1GaORI0HFLO-LlIEQEOg_gcF7O4dQ",
   staffEmailDomain: "staff.factory.invalid", // must equal the Edge Function secret STAFF_EMAIL_DOMAIN
-  idleMinutes: 30,                            // automatic sign-out after inactivity (shared phones)
+  idleMinutes: 0,                             // automatic sign-out after inactivity; 0 = off (sign-in is remembered)
   timeZone: "Africa/Tripoli",
 };

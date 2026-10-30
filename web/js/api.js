@@ -7,7 +7,7 @@ export function sb() {
   if (!client) {
     client = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey, {
       auth: {
-        storage: window.sessionStorage, // session ends when the tab closes (shared factory phones)
+        storage: window.localStorage, // stay signed in after closing the app, until «خروج»
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: false,
@@ -114,6 +114,8 @@ export async function signIn(username, password) {
 
 export async function signOut() {
   await sb().auth.signOut().catch(() => undefined);
+  // also when offline or the server refused: never leave a saved session behind after «خروج»
+  try { for (const k of Object.keys(window.localStorage)) if (k.startsWith("sb-")) window.localStorage.removeItem(k); } catch { /* storage blocked */ }
   window.sessionStorage.clear();
 }
 

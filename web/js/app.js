@@ -201,10 +201,10 @@ async function start() {
   await render();
 }
 
-// Inactivity sign-out (factory phones may be shared).
+// Optional inactivity sign-out (CONFIG.idleMinutes; 0 = off, the sign-in is remembered until «خروج»).
 for (const ev of ["pointerdown", "keydown", "touchstart"]) window.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true });
 setInterval(() => {
-  if (me && Date.now() - lastActivity > CONFIG.idleMinutes * 60_000) logout("تم تسجيل الخروج تلقائياً بعد فترة عدم نشاط.");
+  if (me && CONFIG.idleMinutes > 0 && Date.now() - lastActivity > CONFIG.idleMinutes * 60_000) logout("تم تسجيل الخروج تلقائياً بعد فترة عدم نشاط.");
 }, 30_000);
 
 window.addEventListener("hashchange", () => render());

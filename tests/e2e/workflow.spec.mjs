@@ -133,7 +133,14 @@ test("admin creates an account; the employee must replace the temporary password
   await expect(page.locator(".nav")).toContainText("المخزن");
   await logout();
   await login("store1", "Store#Mine2026");
+  await page.evaluate(() => sessionStorage.clear());                       // = the app was closed and reopened
+  await page.reload();                                                      // the sign-in is remembered
+  await expect(page.locator(".topbar")).toBeVisible();
+  await expect(page.locator(".nav")).toContainText("المخزن");
   await logout();
+  await page.reload();                                                      // «خروج» forgets it
+  await expect(page.getByRole("button", { name: "دخول" })).toBeVisible();
+  expect(await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("sb-")))).toEqual([]);
 });
 
 test("owner's route: order (auto number) → cutter edits qty & cuts → distributes to 2 tailors → return → finishing → ironing → finishing 2 → warehouse", async () => {
