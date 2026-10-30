@@ -1,0 +1,16 @@
+{
+  "name": "garment-web",
+  "private": true,
+  "type": "module",
+  "description": "Garment factory production system — static HTML/CSS/JS on Supabase. Dependencies below are for TESTS ONLY; the site itself has no build step.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/sql/*.test.mjs",
+    "test:e2e": "playwright test",
+    "serve": "node tests/e2e/local-supabase.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "pg": "^8.23.1"
+  }
+}

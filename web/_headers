@@ -1,0 +1,17 @@
+# HTTP security headers for the static host (Netlify / Cloudflare Pages format).
+# Replace the Supabase URL if the project changes. The same policy is in index.html (meta),
+# but frame-ancestors, HSTS and nosniff only work as real HTTP headers.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://vtbenbngmpwzcqmixtzb.supabase.co; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Cache-Control: no-cache
+
+# The service worker must never be cached by the browser's HTTP cache, so updates reach users.
+/sw.js
+  Cache-Control: no-cache, no-store

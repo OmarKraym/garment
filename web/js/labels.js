@@ -1,0 +1,13 @@
+export const STAGES = ["CUTTING", "SEWING", "FINISHING_1", "IRONING", "FINISHING_2", "WAREHOUSE"];
+export const STAGE_LABEL = { CUTTING: "القص", SEWING: "الخياطة", FINISHING_1: "التشطيب الأول", IRONING: "الكي", FINISHING_2: "التشطيب الثاني", WAREHOUSE: "المخزن والتسليم" };
+export const ROLE_LABEL = { ADMIN: "مدير النظام", SUPERVISOR: "مشرف", REVIEWER: "مراجع إنتاج", WORKER: "عامل قسم" };
+export const MODE_LABEL = { SHARED: "عهدة مشتركة للقسم", INDIVIDUAL: "عهدة فردية لكل عامل" };
+export const CONDITION_LABEL = { GOOD: "سليم", DEFECTIVE: "معيب" };
+export const ORDER_STATUS = { DRAFT: "مسودة", RELEASED: "قيد الإنتاج (أُرسلت للقص)", CLOSED: "مغلق", CANCELLED: "ملغى" };
+export const TRANSFER_STATE = { DISPATCHED: "بانتظار الاستلام", PARTIALLY_ACCEPTED: "مستلم جزئياً", DISPUTED: "عليه خلاف", ACCEPTED: "مستلم بالكامل", RETURNED: "مُرجع", CLOSED: "مغلق" };
+export const DIRECTION = { FORWARD: "للمرحلة التالية", INTERNAL: "داخل القسم", RETURN: "إرجاع لمرحلة سابقة" };
+export const DEFECT_REASONS = { CUTTING_ERROR: "خطأ قص", SEWING_ERROR: "خطأ خياطة", FABRIC_FLAW: "عيب في القماش", STAIN: "بقعة أو اتساخ", IRONING_DAMAGE: "تلف أثناء الكي", FINISHING_ERROR: "خطأ تشطيب", MEASUREMENT: "مقاس غير مطابق", OTHER: "سبب آخر" };
+export const DECISION = { REWORK: "إصلاح وإعادة تشغيل", SCRAP: "إتلاف (خروج من المخزون)", REPLACE: "إتلاف مع قص بديل" };
+export const EVENT = { CUT: "قص (إنشاء قطع)", DISPATCH: "إرسال", ACCEPT: "استلام", DISPUTE: "تسجيل خلاف", REJECT_RETURN: "رفض وإرجاع للمرسل", DISPUTE_ACCEPT: "استلام بعد حل الخلاف", DISPUTE_RETURN: "إرجاع الكمية المختلف عليها", DEFECT_MARK: "تسجيل عيب", REPAIR: "إصلاح", SCRAP: "إتلاف", SHIPMENT: "تسليم للزبون", ADJUSTMENT: "تصحيح إداري" };
+export const ASSIGN_STATUS = { ASSIGNED: "مُسندة", IN_PROGRESS: "قيد التنفيذ", DONE: "منجزة", CANCELLED: "ملغاة" };
+export const stageRank = (s) => STAGES.indexOf(s);

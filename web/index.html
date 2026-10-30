@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Strict CSP: only this site's own scripts/styles; network only to this site and the Supabase project.
+       Update the Supabase URL here if the project changes. frame-ancestors must be sent as an HTTP header by the host. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://vtbenbngmpwzcqmixtzb.supabase.co; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0e5c58">
+  <title>إدارة إنتاج المصنع</title>
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="الإنتاج">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/supabase-2.118.0.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" defer></script>
+  <script src="js/app.js" type="module"></script>
+</head>
+<body>
+  <noscript>يتطلب هذا النظام تفعيل JavaScript.</noscript>
+  <div id="app" aria-live="polite">
+    <!-- Replaced as soon as the app starts. Stays visible only if scripts cannot run (e.g. opened as a file). -->
+    <main class="auth-wrap"><div class="card auth-card">
+      <h1>إدارة إنتاج المصنع</h1>
+      <p class="muted">جارٍ التشغيل… إذا بقيت هذه الرسالة فالنظام فُتح كملف مباشرة. يجب فتحه عبر رابط http أو https، مثل <span class="ltr">http://localhost:8080</span> (راجع README).</p>
+    </div></main>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+</body>
+</html>
