@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.118.0";
 // Defaults used until the matching Edge Function secrets are set. Add the production site
 // (https://…) to ALLOWED_ORIGINS when the app is hosted.
 const DEFAULT_EMAIL_DOMAIN = "staff.factory.invalid";
-const DEFAULT_ORIGINS = "http://localhost:8080,http://127.0.0.1:8080";
+const DEFAULT_ORIGINS = "https://omarkraym.github.io,http://localhost:8080,http://127.0.0.1:8080";
 
 const env = (k: string): string => {
   const v = Deno.env.get(k);
