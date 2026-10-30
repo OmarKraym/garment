@@ -101,7 +101,7 @@ async function wrap(req, deps, handler) {
   }
 }
 
-/** Administrator account operations: create, reset password, activate/deactivate. */
+/** Administrator account operations: create, reset password, activate/deactivate, delete. */
 export function handleStaffAdmin(req, deps) {
   return wrap(req, deps, async () => {
     const caller = await requireCaller(req, deps);
@@ -144,6 +144,26 @@ export function handleStaffAdmin(req, deps) {
         const res = await rpc(deps, "svc_set_employee_active", { p_caller: caller.id, p_employee: body.employeeId, p_active: body.active });
         await deps.auth.setBanned(res.auth_user_id, !body.active); // DB check already blocks instantly; ban stops new sign-ins
         return { ok: true };
+      }
+      case "delete": {
+        if (typeof body.employeeId !== "string" || typeof body.confirmUsername !== "string") throw new HttpError(400, "INVALID", "بيانات الحذف ناقصة");
+        // 1) the database re-checks admin rights, the typed confirmation and that nothing is left in the
+        //    employee's hands, then unlinks the login and archives the person (history stays intact).
+        const res = await rpc(deps, "svc_delete_employee", {
+          p_caller: caller.id, p_employee: body.employeeId, p_confirm: body.confirmUsername.trim().toLowerCase(),
+        });
+        // 2) delete the login itself. Even if this step fails the account is already unusable:
+        //    it is no longer linked to any employee, so every database call is refused.
+        let loginDeleted = true;
+        if (res.auth_user_id) {
+          try { await deps.auth.deleteUser(res.auth_user_id); }
+          catch (e) {
+            loginDeleted = false;
+            deps.log?.("auth delete failed; banning instead", e);
+            await deps.auth.setBanned(res.auth_user_id, true).catch(() => undefined);
+          }
+        }
+        return { ok: true, username: res.username, loginDeleted };
       }
       default:
         throw new HttpError(400, "INVALID", "عملية غير معروفة");

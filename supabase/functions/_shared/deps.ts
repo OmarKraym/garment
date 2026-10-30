@@ -39,7 +39,8 @@ export function realDeps() {
         return data.user.id;
       },
       async deleteUser(id: string) {
-        await admin.auth.admin.deleteUser(id);
+        const { error } = await admin.auth.admin.deleteUser(id);
+        if (error) throw new Error(error.message);
       },
       async updatePassword(id: string, password: string) {
         const { error } = await admin.auth.admin.updateUserById(id, { password });

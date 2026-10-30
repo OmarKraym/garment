@@ -217,6 +217,43 @@ describe("concurrency and idempotency", () => {
   });
 });
 
+describe("deleting an employee account", () => {
+  const del = (u, confirm = u.username) => t.callAs("service_role", null, "svc_delete_employee", { p_caller: admin.authId, p_employee: u.employeeId, p_confirm: confirm });
+  it("is refused while pieces, transfers or assignments are still in the person's hands", async () => {
+    const tmp = await t.makeUser("tmp_tailor", [{ role: "WORKER", departmentId: t.depts.SEWING }], { caller: admin.authId });
+    const { lineId } = await releasedOrder("DEL", 2);
+    const { lotId } = await cut(lineId, 2);
+    const cp = await pool("CUTTING");
+    await cutter.call("app_dispatch_batch", { p: { requestKey: key(), items: [{ lotId, fromCustodyId: cp, toDepartmentId: t.depts.SEWING, toEmployeeId: tmp.employeeId, quantity: 2 }] } });
+    await rejects(del(tmp), "BUSINESS_RULE");                                       // sent to him, not yet received
+    const [tr] = (await tmp.call("app_list_transfers", { p_tab: "incoming" })).rows;
+    await accept(tmp, tr.id, 2);
+    await rejects(del(tmp), "BUSINESS_RULE");                                       // 2 pieces in his custody
+    await rejects(del(tmp, "wrong"), "INVALID");                                    // typed confirmation must match
+    await rejects(t.callAs("service_role", null, "svc_delete_employee", { p_caller: tailorA.authId, p_employee: tmp.employeeId, p_confirm: "tmp_tailor" }), "FORBIDDEN");
+    await rejects(t.callAs("service_role", null, "svc_delete_employee", { p_caller: admin.authId, p_employee: admin.employeeId, p_confirm: admin.username }), "BUSINESS_RULE");
+    // pieces move on → the account can go; history keeps his name
+    const own_ = await own("SEWING", tmp);
+    await send(tmp, { lotId, fromCustodyId: own_, toDepartmentId: t.depts.FINISHING_1, quantity: 2 });
+    const r = await del(tmp);
+    assert.equal(r.auth_user_id, tmp.authId);
+    await t.pool.query("DELETE FROM auth.users WHERE id = $1", [tmp.authId]);      // what the Edge Function does next (no FK left)
+    await rejects(tmp.call("app_whoami"), "UNAUTHENTICATED");                      // existing sessions stop at once
+    assert.equal((await admin.call("app_admin_view")).employees.some((e) => e.id === tmp.employeeId), false);
+    const hist = await rev.call("app_get_order", { p_id: (await t.pool.query("SELECT ol.order_id FROM factory.order_lines ol WHERE ol.id = $1", [lineId])).rows[0].order_id });
+    assert.equal(hist.lots.length, 1);
+    const sent = (await fin1.call("app_list_transfers", { p_tab: "incoming" })).rows.find((x) => x.lot_code === tr.lot_code && x.from_label.includes("tmp_tailor"));
+    assert.ok(sent, "the transfer still shows who sent it");
+    // frozen: cannot be reactivated, given roles, or deleted twice; the username is free again
+    await rejects(t.callAs("service_role", null, "svc_set_employee_active", { p_caller: admin.authId, p_employee: tmp.employeeId, p_active: true }), "NOT_FOUND");
+    await rejects(admin.call("app_set_employee_roles", { p_employee: tmp.employeeId, p_roles: [{ role: "WORKER", departmentId: t.depts.SEWING }] }), "NOT_FOUND");
+    await rejects(del(tmp), "NOT_FOUND");
+    const again = await t.makeUser("tmp_tailor", [{ role: "WORKER", departmentId: t.depts.SEWING }], { caller: admin.authId });
+    assert.notEqual(again.employeeId, tmp.employeeId);
+    await balanced();
+  });
+});
+
 describe("receiving a whole order at once", () => {
   it("receives all pending transfers in one step, only the addressee, all or nothing, idempotent", async () => {
     const { orderId } = await releasedOrder("BATCH", 1);

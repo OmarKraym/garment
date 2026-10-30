@@ -94,6 +94,20 @@ function employeeCard(e, v) {
       confirm: e.active ? `إيقاف حساب ${e.display_name}؟ سيُمنع من الدخول فوراً.` : null,
       run: async () => { await edge("staff-admin", { action: "set_active", employeeId: e.id, active: !e.active }); return e.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب"; },
     }));
+  // Irreversible: the admin must type the username. The server re-checks everything.
+  const remove = self ? null : details("حذف الحساب", h("div", { class: "danger-zone stack" },
+    h("p", { class: "small", text: "يُحذف حساب الدخول نهائياً ويختفي الموظف من القوائم، ويبقى اسمه في السجلات السابقة (من قصّ، من أرسل، من استلم). لا يمكن التراجع." }),
+    h("p", { class: "small muted", text: "لا يُحذف حساب لديه قطع في عهدته أو تحويلات بانتظار استلامه أو تكليفات مفتوحة. للإيقاف المؤقت استخدم «إيقاف الحساب»." }),
+    actionForm({
+      submit: "حذف الحساب نهائياً", danger: true,
+      children: [field(`للتأكيد اكتب اسم المستخدم: ${e.username}`, input({ name: "confirm", required: true, autocomplete: "off", autocapitalize: "off", spellcheck: "false", class: "ltr", maxlength: 32 }))],
+      confirm: () => `حذف حساب ${e.display_name} نهائياً؟`,
+      run: async (d) => {
+        if (d.confirm.trim().toLowerCase() !== e.username) throw new Error("اسم المستخدم غير مطابق");
+        await edge("staff-admin", { action: "delete", employeeId: e.id, confirmUsername: d.confirm });
+        return `تم حذف حساب ${e.display_name}`;
+      },
+    })));
   return h("article", { class: `person employee ${e.active ? "" : "inactive"}`, dataset: { username: e.username } },
     h("div", { class: "person-head" },
       h("span", { class: "avatar", attrs: { "aria-hidden": "true" }, text: initials }),
@@ -104,7 +118,7 @@ function employeeCard(e, v) {
     passwordBadge(e) ? h("div", { class: "person-flags" }, passwordBadge(e)) : null,
     h("div", { class: "person-actions" },
       e.active && workerDepts.length ? h("a", { class: "btn btn-sm btn-ghost", attrs: { href: `#/work?employee=${e.id}` }, text: e.open_tasks ? `إسناد مهمة (${e.open_tasks} مفتوحة)` : "إسناد مهمة" }) : null,
-      details("إدارة الحساب", h("div", { class: "stack" }, rolesForm, account))));
+      details("إدارة الحساب", h("div", { class: "stack" }, rolesForm, account, remove))));
 }
 
 function departmentsSection(v) {

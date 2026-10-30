@@ -278,6 +278,24 @@ test("reports reconcile, CSV export is injection-safe and audited, order closes"
   await page.getByRole("link", { name: ORDER }).click();
   await settle(n);
   await act(() => page.getByRole("button", { name: "إغلاق الطلبية" }).click(), "تم إغلاق الطلبية");
+  await logout();
+
+  // the administrator deletes an account: typed confirmation, the person disappears, the login stops working
+  await login("admin", PW.admin);
+  await go("#/admin");
+  const card = page.locator('.employee[data-username="tailor2"]');
+  await open(card, "إدارة الحساب");
+  await open(card, "حذف الحساب");
+  await card.getByLabel(/للتأكيد اكتب اسم المستخدم/).fill("tailor2");
+  await act(() => card.getByRole("button", { name: "حذف الحساب نهائياً" }).click(), "تم حذف حساب");
+  await expect(page.locator('.employee[data-username="tailor2"]')).toHaveCount(0);
+  await logout();
+  await page.getByLabel("اسم المستخدم").fill("tailor2");
+  await page.getByLabel("كلمة المرور").fill(PW.tailor2);
+  await page.getByRole("button", { name: "دخول" }).click();
+  await expect(page.locator(".alert.error")).toBeVisible();                    // the login no longer exists
+  await expect(page.locator(".topbar")).toHaveCount(0);
+  await login("boss", PW.boss);
   for (const p of ["#/", "#/tasks", "#/transfers?tab=all", "#/work", "#/quality?all=1", "#/warehouse", "#/reports?type=movements", "#/account"]) {
     await go(p);
     await page.screenshot({ path: test.info().outputPath(`${p.replace(/\W+/g, "_")}.png`), fullPage: true });

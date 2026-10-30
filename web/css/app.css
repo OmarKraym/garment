@@ -552,3 +552,7 @@ table tfoot th { background: var(--surface-2); }
 @media (max-width: 480px) { .person-flags, .person-actions { padding-inline-start: 0; } }
 .person-head .avatar { background: var(--indigo-soft); color: var(--indigo); }
 .person-actions { align-items: center; } .person-actions > details, .person-actions > a { margin: 0; }
+.danger-zone { padding: 12px; border: 1px solid #f1b3ad; border-radius: var(--r); background: var(--danger-soft); }
+.danger-zone p { margin: 0; }
+details.action[open] > summary + .danger-zone { background: var(--danger-soft); border-color: #f1b3ad; }
+.danger-zone .field .label { color: var(--danger); }

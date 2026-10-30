@@ -130,6 +130,32 @@ describe("staff-admin", () => {
   });
 });
 
+describe("staff-admin: delete account", () => {
+  it("deletes the login, archives the person, frees the username; only an admin, never themselves", async () => {
+    const res = await admin_({ action: "create", username: "leaver1", displayName: "مغادر", roles: roles() });
+    const { id } = await res.json();
+    const auth = (await t.pool.query("SELECT auth_user_id FROM factory.employees WHERE id = $1", [id])).rows[0].auth_user_id;
+    const before = await authCount();
+    assert.equal((await handleStaffAdmin(req({ action: "delete", employeeId: id, confirmUsername: "leaver1" }, { token: tailor.authId }), deps)).status, 403);
+    assert.equal((await admin_({ action: "delete", employeeId: id, confirmUsername: "nope" })).status, 400);
+    assert.equal((await admin_({ action: "delete", employeeId: admin.employeeId, confirmUsername: "admin1" })).status, 422);
+    assert.equal((await admin_({ action: "delete", employeeId: id })).status, 400);
+    assert.equal(await authCount(), before);                                       // nothing deleted by refused attempts
+    const ok = await admin_({ action: "delete", employeeId: id, confirmUsername: " Leaver1 " });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, username: "leaver1", loginDeleted: true });
+    assert.equal(await authCount(), before - 1);
+    assert.equal(await deps.getCaller(auth), null);                                // the login no longer exists
+    const row = (await t.pool.query("SELECT active, auth_user_id, username, deleted_at FROM factory.employees WHERE id = $1", [id])).rows[0];
+    assert.equal(row.active, false); assert.equal(row.auth_user_id, null); assert.ok(row.deleted_at); assert.match(row.username, /^deleted\./);
+    const audit = (await t.pool.query("SELECT metadata FROM factory.audit_events WHERE action = 'employee.delete' AND target_id = $1", [id])).rows[0];
+    assert.equal(audit.metadata.username, "leaver1");
+    assert.equal((await admin_({ action: "delete", employeeId: id, confirmUsername: "leaver1" })).status, 404);
+    assert.equal((await admin_({ action: "reset_password", employeeId: id })).status, 404);
+    assert.equal((await admin_({ action: "create", username: "leaver1", displayName: "جديد", roles: roles() })).status, 200);
+  });
+});
+
 describe("account: change own password", () => {
   it("verifies the current password, applies policy, then clears the forced-change flag", async () => {
     const call = (body) => handleAccount(req({ action: "change_password", ...body }, { token: tailor.authId }), deps);
