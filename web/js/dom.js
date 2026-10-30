@@ -116,3 +116,19 @@ export function secretDialog({ title, intro, rows = [], secret, note }) {
   dlg.showModal();
   return dlg;
 }
+
+const ROUTE = [["CUTTING", "قص"], ["SEWING", "خياطة"], ["FINISHING_1", "تشطيب ١"], ["IRONING", "كي"], ["FINISHING_2", "تشطيب ٢"], ["WAREHOUSE", "مخزن"]];
+
+/**
+ * The production route as a stitched seam: stages already passed, the current one, and those ahead.
+ * routeRail("IRONING") — `counts` (optional) shows a number under each stage instead of state only.
+ */
+export function routeRail(current, counts) {
+  const at = ROUTE.findIndex(([s]) => s === current);
+  return h("ol", { class: counts ? "route route-counts" : "route", attrs: { "aria-label": at >= 0 ? `المرحلة الحالية: ${ROUTE[at][1]}` : "مسار الإنتاج" } },
+    ROUTE.map(([stage, label], i) => h("li", {
+      class: i < at ? "done" : i === at ? "here" : counts?.[stage] ? "has" : "",
+      attrs: { "aria-current": i === at ? "step" : null },
+    }, h("span", { class: "dot" }), h("span", { class: "route-label", text: label }),
+    counts ? h("span", { class: "route-count num", text: counts[stage] ?? 0 }) : null)));
+}

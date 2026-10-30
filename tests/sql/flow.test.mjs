@@ -217,6 +217,32 @@ describe("concurrency and idempotency", () => {
   });
 });
 
+describe("receiving a whole order at once", () => {
+  it("receives all pending transfers in one step, only the addressee, all or nothing, idempotent", async () => {
+    const { orderId } = await releasedOrder("BATCH", 1);
+    const lines = (await sup.call("app_get_order", { p_id: orderId })).lines;
+    const { lotId } = await cut(lines[0].id, 1);
+    const cp = await pool("CUTTING");
+    const { lineId: l2 } = await releasedOrder("BATCH2", 3);
+    const { lotId: lot2 } = await cut(l2, 3);
+    const r = await cutter.call("app_dispatch_batch", { p: { requestKey: key(), items: [
+      { lotId, fromCustodyId: cp, toDepartmentId: t.depts.SEWING, toEmployeeId: tailorA.employeeId, quantity: 1 },
+      { lotId: lot2, fromCustodyId: cp, toDepartmentId: t.depts.SEWING, toEmployeeId: tailorA.employeeId, quantity: 3 }] } });
+    assert.equal(r.quantity, 4);
+    const ids = (await tailorA.call("app_list_transfers", { p_tab: "incoming" })).rows.map((x) => x.id);
+    await rejects(tailorB.call("app_receive_batch", { p: { requestKey: key(), transferIds: ids } }), "FORBIDDEN");   // not addressed to him
+    assert.equal((await tailorA.call("app_list_transfers", { p_tab: "incoming" })).rows.length, ids.length);       // nothing half-received
+    const k = key();
+    const ok = await tailorA.call("app_receive_batch", { p: { requestKey: k, transferIds: ids } });
+    assert.equal(ok.quantity >= 4, true);
+    assert.equal((await tailorA.call("app_receive_batch", { p: { requestKey: k, transferIds: ids } })).replayed, true);
+    assert.equal((await tailorA.call("app_list_transfers", { p_tab: "incoming" })).rows.length, 0);
+    const where = (await sup.call("app_get_order", { p_id: orderId })).where;
+    assert.deepEqual(where.map((w) => w.rank), [2]);                                                             // sewing
+    await balanced();
+  });
+});
+
 describe("route: next stage, or back one stage with a reason", () => {
   it("tailor returns to the cutter; no skipping, no same-stage moves; the admin can switch returns off", async () => {
     const { lineId } = await releasedOrder("ROUTE", 6);

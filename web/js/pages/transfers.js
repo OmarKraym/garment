@@ -5,14 +5,9 @@ import { CONDITION_LABEL, DIRECTION, TRANSFER_STATE } from "../labels.js";
 
 const TABS = [["incoming", "بانتظار استلامي"], ["disputes", "الخلافات"], ["outgoing", "أرسلتُها"], ["all", "كل التحويلات المفتوحة"]];
 
-function receiveControls(t) {
-  const all = actionButton(`استلام الكل (${t.pending_qty})`, {
-    run: async (op) => {
-      await op.run("app_receive", (requestKey) => ({ p_id: t.id, p: { requestKey, acceptQty: t.pending_qty, disputeQty: 0, rejectQty: 0 } }));
-      return `تم استلام ${t.pending_qty} قطعة`;
-    },
-  });
-  const partial = actionForm({
+/** Receive less than what was sent: what arrived, what is missing (dispute), what goes back. */
+export function partialReceiveForm(t) {
+  return actionForm({
     submit: "تأكيد",
     children: [
       h("div", { class: "inline-fields" },
@@ -27,7 +22,16 @@ function receiveControls(t) {
       return "تم تسجيل الاستلام";
     },
   });
-  return h("div", { class: "mt" }, h("div", { class: "row" }, all), details("استلام جزئي / تسجيل فرق", partial));
+}
+
+function receiveControls(t) {
+  const all = actionButton(`استلام الكل (${t.pending_qty})`, {
+    run: async (op) => {
+      await op.run("app_receive", (requestKey) => ({ p_id: t.id, p: { requestKey, acceptQty: t.pending_qty, disputeQty: 0, rejectQty: 0 } }));
+      return `تم استلام ${t.pending_qty} قطعة`;
+    },
+  });
+  return h("div", { class: "mt" }, h("div", { class: "row" }, all), details("استلام جزئي / تسجيل فرق", partialReceiveForm(t)));
 }
 
 function resolveControls(t, canAccept) {

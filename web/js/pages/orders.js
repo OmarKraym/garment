@@ -1,12 +1,16 @@
 import { rpc } from "../api.js";
-import { badge, details, empty, field, fmtDate, h, input, pageHead, table, todayLocal } from "../dom.js";
+import { badge, details, empty, field, fmtDate, h, input, pageHead, routeRail, table, todayLocal } from "../dom.js";
 import { actionButton, actionForm, int, optional } from "../forms.js";
-import { ORDER_STATUS } from "../labels.js";
+import { ORDER_STATUS, STAGES } from "../labels.js";
 
 const FILTERS = [["active", "النشطة"], ["overdue", "المتأخرة"], ["closed", "المغلقة"], ["all", "الكل"]];
 const statusBadge = (s) => badge(ORDER_STATUS[s], s === "RELEASED" ? "primary" : s === "CLOSED" ? "ok" : "");
-const chips = (items) => h("div", { class: "qtys" }, items.map(([label, v, tone]) =>
-  h("span", { class: `qty-chip ${tone ? `badge ${tone}` : ""}` }, `${label}: `, h("b", { class: "num", text: v }))));
+/** Delivered out of planned, as a thin bar (the one number a customer asks about). */
+function progress(done, total) {
+  const fill = h("span");
+  fill.style.inlineSize = `${total ? Math.min(100, Math.round((done / total) * 100)) : 0}%`; // CSSOM: allowed under the strict CSP
+  return h("div", { class: "progress", attrs: { role: "img", "aria-label": `سُلّم ${done} من ${total}` } }, fill);
+}
 
 export async function render(ctx) {
   const [, sub] = ctx.parts;
@@ -19,26 +23,23 @@ async function list({ me, query }) {
   const filter = FILTERS.some(([k]) => k === query.filter) ? query.filter : "active";
   const rows = await rpc("app_list_orders", { p_filter: filter, p_search: query.q ?? null });
   const search = h("input", { attrs: { name: "q", value: query.q ?? "", placeholder: "بحث برقم الطلبية أو الزبون أو المنتج", "aria-label": "بحث" } });
-  const form = h("form", { class: "row mt" }, search, h("button", { class: "btn-secondary", attrs: { type: "submit" }, text: "بحث" }));
+  const form = h("form", { class: "search-row mt", attrs: { role: "search" } }, search, h("button", { class: "btn-secondary", attrs: { type: "submit" }, text: "بحث" }));
   form.addEventListener("submit", (e) => { e.preventDefault(); location.hash = `#/orders?filter=${filter}&q=${encodeURIComponent(search.value)}`; });
   return h("div", {},
-    pageHead("الطلبيات", "الكميات محسوبة من سجل الحركات مباشرة",
+    pageHead("الطلبيات", null,
       me.roles.includes("SUPERVISOR") ? h("a", { class: "btn", attrs: { href: "#/orders/new" }, text: "+ طلبية جديدة" }) : null),
     h("nav", { class: "tabs", attrs: { "aria-label": "تصفية الطلبيات" } },
       FILTERS.map(([k, label]) => h("a", { attrs: { href: `#/orders?filter=${k}`, "aria-current": k === filter ? "page" : null }, text: label }))),
     form, h("div", { class: "mt" }),
-    rows.length ? table([
-      { label: "الطلب", cell: (r) => h("a", { attrs: { href: `#/orders/${r.id}` } }, h("b", { text: r.order_code })) },
-      { label: "الزبون / المنتج", cell: (r) => h("span", {}, r.customer_name, h("div", { class: "small muted", text: r.product_name })) },
-      { label: "التسليم", num: true, cell: (r) => h("span", {}, r.due_date, r.overdue ? h("div", {}, badge(`متأخر ${r.days_late} يوم`, "danger")) : null) },
-      { label: "الحالة", cell: (r) => statusBadge(r.status) },
-      { label: "المخطط", num: true, cell: (r) => r.planned_qty },
-      { label: "مقصوص", num: true, cell: (r) => r.cut_qty },
-      { label: "في الإنتاج", num: true, cell: (r) => r.in_production_qty },
-      { label: "في المخزن", num: true, cell: (r) => r.in_warehouse_qty },
-      { label: "مسلَّم", num: true, cell: (r) => r.delivered_qty },
-      { label: "المتبقي", num: true, cell: (r) => h("b", { text: r.remaining_qty }) },
-    ], rows, (r) => (r.overdue ? "overdue" : "")) : empty("لا توجد طلبيات"));
+    rows.length ? h("div", { class: "list" }, rows.map((r) => h("a", { class: `list-row order-row ${r.overdue ? "overdue" : ""}`, attrs: { href: `#/orders/${r.id}` } },
+      h("div", { class: "order-row-main" },
+        h("div", { class: "order-row-top" }, h("b", { class: "ltr", text: r.order_code }), statusBadge(r.status), r.overdue ? badge(`متأخرة ${r.days_late} يوم`, "danger") : null),
+        h("div", { class: "small", text: `${r.customer_name} — ${r.product_name}` }),
+        progress(r.delivered_qty, r.planned_qty),
+        h("div", { class: "order-row-meta small muted" },
+          h("span", {}, "سُلّم ", h("b", { class: "num", text: r.delivered_qty }), " من ", h("span", { class: "num", text: r.planned_qty })),
+          h("span", {}, "في الإنتاج ", h("b", { class: "num", text: r.in_production_qty })),
+          h("span", {}, "التسليم ", h("span", { class: "num", text: r.due_date }))))))) : empty("لا توجد طلبيات"));
 }
 
 const splitList = (v) => [...new Set(String(v ?? "").split(/[,،\n]+/).map((x) => x.trim()).filter(Boolean))];
@@ -146,41 +147,40 @@ async function orderDetail({ me }, id) {
   if (o.can_manage && o.status === "RELEASED") {
     actions.push(actionButton("إغلاق الطلبية", { cls: "btn-secondary", confirm: "إغلاق الطلبية؟ يُسمح فقط إذا لم تبقَ منها قطع في الإنتاج أو المخزن.", run: async () => { await rpc("app_close_order", { p_id: id }); return "تم إغلاق الطلبية"; } }));
   }
+  // where the pieces are, on the route (rank 1..6); transit / dispute have no stage
+  const counts = {}; let between = 0;
+  for (const w of o.where) { if (STAGES[w.rank - 1]) counts[STAGES[w.rank - 1]] = (counts[STAGES[w.rank - 1]] ?? 0) + w.qty; else between += w.qty; }
+  const fact = (label, v, tone) => h("div", { class: `fact ${tone ?? ""}` }, h("dt", { text: label }), h("dd", { class: "num", text: v }));
+  const optionalSection = (title, rows, cols) => (rows.length ? h("section", { class: "block" }, h("h2", { text: title }), table(cols, rows)) : null);
   return h("div", {},
-    pageHead(`الطلبية ${o.order_code}`, `${o.customer_name} — ${o.product_name}${o.model_code ? ` (${o.model_code})` : ""}`,
-      statusBadge(o.status), o.overdue ? badge(`متأخر ${o.days_late} يوم`, "danger") : null),
-    h("section", { class: "card" },
-      h("div", { class: "card-row" },
-        h("div", {},
-          h("div", {}, "تاريخ التسليم: ", h("b", { class: "num", text: o.due_date })),
-          h("div", { class: "small muted", text: `أنشأه ${o.created_by_name} — ${fmtDate(o.created_at)}${o.released_at ? ` — أُطلق ${fmtDate(o.released_at)}` : ""}` }),
-          o.notes ? h("p", { class: "small mt", text: o.notes }) : null),
-        actions.length ? h("div", { class: "row" }, actions) : null),
-      h("div", { class: "mt" }, chips([
-        ["المخطط", o.planned_qty], ["مقصوص", o.cut_qty], ["في الإنتاج", o.in_production_qty], ["في المخزن", o.in_warehouse_qty],
-        ["مسلَّم", o.delivered_qty, "ok"], ["متلف", o.scrapped_qty, o.scrapped_qty ? "danger" : ""],
-        ["المتبقي للتسليم", o.remaining_qty, o.overdue ? "danger" : ""]]))),
-    h("section", { class: "card" }, h("h2", { text: "الألوان والمقاسات" }),
-      o.can_manage && ["DRAFT", "RELEASED"].includes(o.status) ? quantitiesForm(o) : null, table([
-      { label: "اللون", cell: (l) => l.color }, { label: "المقاس", cell: (l) => l.size },
-      { label: "المخطط", num: true, cell: (l) => l.planned_qty }, { label: "مقصوص", num: true, cell: (l) => l.cut_qty },
-      { label: "قص بديل", num: true, cell: (l) => l.replacement_cut_qty }, { label: "موجود الآن", num: true, cell: (l) => l.on_hand_qty },
-      { label: "منه قيد النقل/خلاف", num: true, cell: (l) => l.in_transit_qty }, { label: "معيب", num: true, cell: (l) => l.defective_qty },
-      { label: "مسلَّم", num: true, cell: (l) => l.delivered_qty }, { label: "متلف", num: true, cell: (l) => l.scrapped_qty },
-    ], o.lines)),
-    h("div", { class: "grid grid-2" },
-      h("section", { class: "card" }, h("h2", { text: "أين القطع الآن؟" }),
-        o.where.length ? table([{ label: "المكان", cell: (w) => w.label }, { label: "الكمية", num: true, cell: (w) => w.qty }], o.where) : empty("لا توجد قطع موجودة حالياً")),
-      h("section", { class: "card" }, h("h2", { text: "دفعات القص" }),
-        o.lots.length ? table([
-          { label: "الدفعة", cls: "ltr", cell: (l) => h("span", {}, l.lot_code, " ", l.is_replacement ? badge("بديل", "warn") : null) },
-          { label: "اللون/المقاس", cell: (l) => `${l.color} / ${l.size}` },
-          { label: "الكمية", num: true, cell: (l) => l.created_qty }, { label: "بواسطة", cell: (l) => l.created_by_name },
-        ], o.lots) : empty("لم يتم القص بعد"))),
-    h("section", { class: "card" }, h("h2", { text: "التسليمات للزبون" }),
-      o.shipments.length ? table([
-        { label: "رقم التسليم", cls: "ltr small", cell: (s) => s.shipment_code }, { label: "التاريخ", num: true, cell: (s) => s.delivered_on },
-        { label: "الكمية", num: true, cell: (s) => s.quantity }, { label: "بواسطة", cell: (s) => s.created_by_name },
-      ], o.shipments) : empty("لا توجد تسليمات بعد"),
-      viewAll ? h("p", { class: "small mt" }, h("a", { attrs: { href: `#/reports?tab=movements&orderId=${o.id}` }, text: "سجل حركات هذه الطلبية ←" })) : null));
+    pageHead(`الطلبية ${o.order_code}`, `${o.customer_name} — ${o.product_name}${o.model_code ? ` (${o.model_code})` : ""}`),
+    h("div", { class: "row order-badges" }, statusBadge(o.status), o.overdue ? badge(`متأخرة ${o.days_late} يوم`, "danger") : null,
+      h("span", { class: "small muted" }, "التسليم ", h("b", { class: "num", text: o.due_date }))),
+    h("section", { class: "card order-summary" },
+      h("div", { class: "order-progress" },
+        h("div", {}, h("span", { class: "big-num num", text: o.delivered_qty }), h("span", { class: "muted" }, " / ", h("span", { class: "num", text: o.planned_qty }), " قطعة سُلّمت")),
+        progress(o.delivered_qty, o.planned_qty)),
+      routeRail(null, counts),
+      between ? h("p", { class: "small muted route-note" }, "بين قسمين (لم تُستلم بعد) ", h("b", { class: "num", text: between })) : null,
+      h("dl", { class: "facts" },
+        fact("المطلوب", o.planned_qty), fact("مقصوص", o.cut_qty), fact("في الإنتاج", o.in_production_qty),
+        fact("في المخزن", o.in_warehouse_qty), fact("المتبقي", o.remaining_qty, o.overdue ? "danger" : ""), fact("متلف", o.scrapped_qty, o.scrapped_qty ? "danger" : ""))),
+    o.notes ? h("p", { class: "note-box", text: o.notes }) : null,
+    h("section", { class: "block" }, h("h2", { text: "الألوان والمقاسات" }),
+      table([
+        { label: "اللون / المقاس", cell: (l) => h("span", {}, `${l.color} / ${l.size}`, l.defective_qty ? h("span", { class: "badge danger sm", text: `معيب ${l.defective_qty}` }) : null) },
+        { label: "المطلوب", num: true, cell: (l) => l.planned_qty },
+        { label: "مقصوص", num: true, cell: (l) => l.cut_qty + l.replacement_cut_qty },
+        { label: "مسلَّم", num: true, cell: (l) => h("b", { text: l.delivered_qty }) },
+      ], o.lines),
+      o.can_manage && ["DRAFT", "RELEASED"].includes(o.status) ? h("div", { class: "mt" }, quantitiesForm(o)) : null),
+    optionalSection("دفعات القص", o.lots, [
+      { label: "اللون / المقاس", cell: (l) => h("span", {}, `${l.color} / ${l.size}`, l.is_replacement ? h("span", { class: "badge warn sm", text: "بديل" }) : null) },
+      { label: "الكمية", num: true, cell: (l) => l.created_qty }, { label: "بواسطة", cell: (l) => l.created_by_name }]),
+    optionalSection("التسليمات للزبون", o.shipments, [
+      { label: "التاريخ", num: true, cell: (s) => s.delivered_on }, { label: "الكمية", num: true, cell: (s) => s.quantity },
+      { label: "بواسطة", cell: (s) => s.created_by_name }]),
+    h("p", { class: "small muted meta-line", text: `أنشأها ${o.created_by_name} ${fmtDate(o.created_at)}${o.released_at ? ` · أُرسلت للقص ${fmtDate(o.released_at)}` : ""}` }),
+    viewAll ? h("p", { class: "small" }, h("a", { attrs: { href: `#/reports?tab=movements&orderId=${o.id}` }, text: "سجل حركات هذه الطلبية" })) : null,
+    actions.length ? h("div", { class: "row page-actions" }, actions) : null);
 }

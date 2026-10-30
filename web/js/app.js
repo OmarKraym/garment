@@ -5,6 +5,7 @@ import { alertBox, clear, h } from "./dom.js";
 import { ROLE_LABEL } from "./labels.js";
 import { changePasswordForm } from "./pages/account.js";
 import { initPwa } from "./pwa.js";
+import { icon } from "./icons.js";
 
 const PAGES = {
   "": () => import("./pages/dashboard.js"),
@@ -32,21 +33,22 @@ function parseHash() {
 
 export function navigate(hash) { location.hash = hash; }
 
+/** [route, label, icon, badge count]. The first four are the phone's bottom bar; the rest go under «المزيد». */
 function navItems(me) {
   const worker = me.departments.length > 0;
   const has = (r) => me.roles.includes(r);
   const viewAll = has("ADMIN") || has("SUPERVISOR") || has("REVIEWER");
   const items = [];
-  if (worker) items.push(["tasks", "مهامي", me.incoming]);
-  if (viewAll) items.push(["", "لوحة المتابعة"]);
-  if (worker || viewAll) items.push(["orders", "الطلبيات"]);
-  if (me.departments.some((d) => d.stage === "WAREHOUSE") || viewAll) items.push(["warehouse", "المخزن والتسليم"]);
-  if (worker || viewAll) items.push(["quality", "الجودة والعيوب"]);
-  if (worker || viewAll) items.push(["transfers", "سجل التحويلات"]);
-  if (has("SUPERVISOR") || has("ADMIN")) items.push(["work", "تكليفات العمل"]);
-  if (viewAll) items.push(["reports", "التقارير"]);
-  if (has("ADMIN")) items.push(["admin", "الإدارة"]);
-  items.push(["account", "حسابي"]);
+  if (worker) items.push(["tasks", "مهامي", "tasks", me.incoming]);
+  if (viewAll) items.push(["", "المتابعة", "dashboard"]);
+  if (worker || viewAll) items.push(["orders", "الطلبيات", "orders"]);
+  if (me.departments.some((d) => d.stage === "WAREHOUSE") || viewAll) items.push(["warehouse", "المخزن", "warehouse"]);
+  if (worker || viewAll) items.push(["quality", "الجودة", "quality"]);
+  if (viewAll) items.push(["reports", "التقارير", "reports"]);
+  if (worker || viewAll) items.push(["transfers", "التحويلات", "transfers"]);
+  if (has("SUPERVISOR") || has("ADMIN")) items.push(["work", "التكليفات", "work"]);
+  if (has("ADMIN")) items.push(["admin", "الإدارة", "admin"]);
+  items.push(["account", "حسابي", "account"]);
   return items;
 }
 
@@ -61,20 +63,49 @@ function resolveRoute(me, parts) {
   return page;
 }
 
+const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("");
+
 function shell(content) {
   const { parts } = parseHash();
   const current = resolveRoute(me, parts);
   const roleText = [...me.roles.map((r) => ROLE_LABEL[r]), ...me.departments.map((d) => d.name_ar)].join("، ");
+  const items = navItems(me);
+  const BAR = 4;                                   // phone bottom bar: 4 items + «المزيد»
+  const overflow = items.length > BAR + 1 ? items.slice(BAR) : [];
+  const link = ([key, label, ic, count], i) => h("a", {
+    class: `nav-item${i >= BAR && overflow.length ? " nav-extra" : ""}`,
+    attrs: { href: `#/${key}`, "aria-current": key === current ? "page" : null },
+  }, h("span", { class: "nav-icon" }, icon(ic), count ? h("span", { class: "count", attrs: { "aria-label": `${count} بانتظارك` }, text: count }) : null),
+  h("span", { class: "nav-label", text: label }));
+
+  const sheet = h("dialog", { class: "sheet", attrs: { "aria-label": "المزيد" } },
+    h("div", { class: "sheet-head" }, h("b", { text: "المزيد" }),
+      h("button", { class: "icon-btn", attrs: { type: "button", "aria-label": "إغلاق" }, onclick: () => sheet.close() }, icon("close"))),
+    h("div", { class: "sheet-grid" }, overflow.map(([key, label, ic]) => h("a", {
+      class: "sheet-item", attrs: { href: `#/${key}`, "aria-current": key === current ? "page" : null }, onclick: () => sheet.close(),
+    }, icon(ic, 24), h("span", { text: label })))));
+  sheet.addEventListener("click", (e) => { if (e.target === sheet) sheet.close(); }); // tap outside closes
+  const moreActive = overflow.some(([key]) => key === current);
+
+  const menu = h("details", { class: "user-menu" },
+    h("summary", { attrs: { "aria-label": `حساب ${me.display_name}` } }, h("span", { class: "avatar", text: initials(me.display_name) })),
+    h("div", { class: "user-pop" },
+      h("div", { class: "user-name", text: me.display_name }),
+      h("div", { class: "small muted", text: roleText }),
+      h("a", { class: "pop-link", attrs: { href: "#/account" } }, icon("account", 18), "حسابي"),
+      h("button", { class: "pop-link", attrs: { type: "button" }, onclick: () => logout() }, icon("logout", 18), "خروج")));
+
   return h("div", { class: "shell" },
     h("header", { class: "topbar" },
-      h("a", { class: "brand", attrs: { href: "#/" }, text: "إدارة إنتاج المصنع" }),
-      h("div", { class: "who" },
-        h("span", { attrs: { title: roleText }, text: me.display_name }),
-        h("button", { class: "btn-sm btn-ghost btn-on-dark", attrs: { type: "button" }, text: "خروج", onclick: () => logout() }))),
+      h("a", { class: "brand", attrs: { href: "#/" } },
+        h("img", { attrs: { src: "icons/icon.svg", alt: "", width: 30, height: 30 } }),
+        h("span", { class: "brand-name", text: "إدارة الإنتاج" })),
+      menu),
     h("nav", { class: "nav", attrs: { "aria-label": "القائمة الرئيسية" } },
-      navItems(me).map(([key, label, count]) => h("a", {
-        attrs: { href: `#/${key}`, "aria-current": key === current ? "page" : null },
-      }, label, count ? h("span", { class: "count", attrs: { "aria-label": `${count} بانتظارك` }, text: count }) : null))),
+      items.map(link),
+      overflow.length ? h("button", { class: `nav-item nav-more${moreActive ? " active" : ""}`, attrs: { type: "button" }, onclick: () => sheet.showModal() },
+        h("span", { class: "nav-icon" }, icon("more")), h("span", { class: "nav-label", text: "المزيد" })) : null),
+    sheet,
     h("main", { class: "main", attrs: { id: "main" } }, content));
 }
 
@@ -100,9 +131,10 @@ function signInScreen(message) {
       button.disabled = false;
     }
   });
-  clear(root).append(h("main", { class: "auth-wrap" }, h("div", { class: "card auth-card" },
+  clear(root).append(h("main", { class: "auth-wrap" }, h("div", { class: "auth-card" },
+    h("img", { class: "auth-logo", attrs: { src: "icons/icon.svg", alt: "", width: 64, height: 64 } }),
     h("h1", { text: "إدارة إنتاج المصنع" }),
-    h("p", { class: "muted center", text: "سجّل الدخول باسم المستخدم وكلمة المرور" }),
+    h("p", { class: "muted", text: "ادخل باسم المستخدم الذي أعطاك إياه مدير النظام." }),
     form)));
   user.focus();
 }
@@ -176,6 +208,10 @@ setInterval(() => {
 }, 30_000);
 
 window.addEventListener("hashchange", () => render());
+// close the user menu when tapping anywhere else
+document.addEventListener("click", (e) => {
+  for (const m of document.querySelectorAll(".user-menu[open]")) if (!m.contains(e.target)) m.open = false;
+});
 window.addEventListener("refresh", () => render());
 window.addEventListener("auth-lost", () => { if (me) logout("انتهت الجلسة. سجّل الدخول من جديد"); });
 initPwa();

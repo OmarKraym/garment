@@ -4,15 +4,17 @@
 //    (shared factory phones), and requests to Supabase (data, sign-in, Edge Functions) are not touched.
 //  - Network first: every update reaches users as soon as they are online; the cache is only a fallback.
 //  - Nothing is written while offline: the database is the only source of truth.
-const VERSION = "2026-10-30.6";
+const VERSION = "2026-10-30.8";
 const CACHE = `garment-shell-${VERSION}`;
 const SHELL = [
   "", "index.html", "manifest.webmanifest", "css/app.css",
   "vendor/supabase-2.118.0.js",
-  "js/api.js", "js/app.js", "js/config.js", "js/csv.js", "js/dom.js", "js/forms.js", "js/labels.js", "js/pwa.js",
+  "js/api.js", "js/app.js", "js/config.js", "js/csv.js", "js/dom.js", "js/forms.js", "js/icons.js", "js/labels.js", "js/pwa.js",
   "js/pages/account.js", "js/pages/admin.js", "js/pages/dashboard.js", "js/pages/orders.js", "js/pages/quality.js",
   "js/pages/reports.js", "js/pages/tasks.js", "js/pages/transfers.js", "js/pages/warehouse.js", "js/pages/work.js",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png",
+  "fonts/plex-arabic-arabic-400.woff2", "fonts/plex-arabic-arabic-600.woff2", "fonts/plex-arabic-arabic-700.woff2",
+  "fonts/plex-arabic-latin-400.woff2", "fonts/plex-arabic-latin-600.woff2", "fonts/plex-arabic-latin-700.woff2", "fonts/OFL-LICENSE.txt",
 ];
 
 const scopePath = () => new URL(self.registration.scope).pathname;

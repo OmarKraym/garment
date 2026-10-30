@@ -54,6 +54,7 @@ async function login(user, pw) {
   await settle();
 }
 async function logout() {
+  await page.locator(".user-menu > summary").click();
   await page.getByRole("button", { name: "خروج" }).click();
   await expect(page.getByRole("button", { name: "دخول" })).toBeVisible();
 }
@@ -115,7 +116,7 @@ test("admin creates an account; the employee must replace the temporary password
   const temp = (await dialog.locator(".secret").textContent()).trim();
   expect(temp).toMatch(/^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/);
   await dialog.getByRole("button", { name: /تم/ }).click();
-  await expect(page.locator("dialog")).toHaveCount(0);                     // the secret is gone from the page
+  await expect(page.locator("dialog.secret-dialog")).toHaveCount(0);       // the secret is gone from the page
   await expect(page.locator('.employee[data-username="store1"]')).toContainText("بانتظار أول دخول");
   await go("#/admin/adjustments");
   await expect(page.getByRole("heading", { name: "تصحيح الكميات" })).toBeVisible();
@@ -129,7 +130,7 @@ test("admin creates an account; the employee must replace the temporary password
   await page.getByLabel("أعد كتابة كلمة المرور الجديدة").fill("Store#Mine2026");
   await page.getByRole("button", { name: "تغيير كلمة المرور" }).click();
   await expect(page.getByRole("heading", { name: "غيّر كلمة المرور أولاً" })).toHaveCount(0);
-  await expect(page.locator(".nav")).toContainText("المخزن والتسليم");
+  await expect(page.locator(".nav")).toContainText("المخزن");
   await logout();
   await login("store1", "Store#Mine2026");
   await logout();

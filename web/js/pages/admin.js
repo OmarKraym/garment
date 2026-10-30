@@ -69,51 +69,54 @@ function employeeCard(e, v) {
   const self = e.id === v.self_id;
   const workerDepts = e.roles.filter((r) => r.role === "WORKER").map((r) => r.department_name);
   const perms = e.roles.filter((r) => r.role !== "WORKER").map((r) => ROLE_LABEL[r.role]);
-  return h("article", { class: `card m0 employee ${e.active ? "" : "muted"}`, dataset: { username: e.username } },
-    h("div", { class: "card-row" },
-      h("div", {}, h("b", { text: e.display_name }), " ", h("span", { class: "small muted ltr", text: e.username }),
-        h("div", { class: "small", text: `الصلاحيات: ${perms.join("، ") || "—"}` }),
-        h("div", { class: "small", text: `الأقسام: ${workerDepts.join("، ") || "—"}` })),
-      h("div", { class: "row" }, e.active ? badge("فعّال", "ok") : badge("موقوف", "danger"), passwordBadge(e))),
-    h("div", { class: "row mt small" },
-      h("span", { text: `مهام مفتوحة: ${e.open_tasks}` }),
-      e.active && workerDepts.length ? h("a", { class: "btn btn-sm btn-ghost", attrs: { href: `#/work?employee=${e.id}` }, text: "إسناد مهمة" }) : null),
-    details("تعديل الصلاحيات والأقسام", actionForm({
-      submit: "حفظ", children: [accessPicker(v.departments, e.roles)],
-      run: async (_d, _op, form) => {
-        const roles = readRoles(form);
-        if (!roles.length) throw new Error("اختر صلاحية أو قسماً واحداً على الأقل");
-        await rpc("app_set_employee_roles", { p_employee: e.id, p_roles: roles });
-        return "تم تحديث الصلاحيات والأقسام";
+  const initials = e.display_name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("");
+  const rolesForm = actionForm({
+    submit: "حفظ الصلاحيات والأقسام", children: [accessPicker(v.departments, e.roles)],
+    run: async (_d, _op, form) => {
+      const roles = readRoles(form);
+      if (!roles.length) throw new Error("اختر صلاحية أو قسماً واحداً على الأقل");
+      await rpc("app_set_employee_roles", { p_employee: e.id, p_roles: roles });
+      return "تم تحديث الصلاحيات والأقسام";
+    },
+  });
+  const account = self ? null : h("div", { class: "row account-actions" },
+    e.active ? actionButton("إصدار كلمة مرور مؤقتة جديدة", {
+      cls: "btn-sm btn-secondary",
+      confirm: `إصدار كلمة مرور مؤقتة جديدة لـ ${e.display_name}؟ ستتوقف كلمة مروره الحالية فوراً.`,
+      run: async () => {
+        const res = await edge("staff-admin", { action: "reset_password", employeeId: e.id });
+        showTempPassword(res, e.display_name, false);
+        return "تم إصدار كلمة مرور مؤقتة";
       },
-    })),
-    self ? null : h("div", { class: "row mt" },
-      e.active ? actionButton("إصدار كلمة مرور مؤقتة جديدة", {
-        cls: "btn-sm btn-secondary",
-        confirm: `إصدار كلمة مرور مؤقتة جديدة لـ ${e.display_name}؟ ستتوقف كلمة مروره الحالية فوراً.`,
-        run: async () => {
-          const res = await edge("staff-admin", { action: "reset_password", employeeId: e.id });
-          showTempPassword(res, e.display_name, false);
-          return "تم إصدار كلمة مرور مؤقتة";
-        },
-      }) : null,
-      actionButton(e.active ? "إيقاف الحساب" : "تفعيل الحساب", {
-        cls: e.active ? "btn-danger btn-sm" : "btn-sm",
-        confirm: e.active ? `إيقاف حساب ${e.display_name}؟ سيُمنع من الدخول فوراً.` : null,
-        run: async () => { await edge("staff-admin", { action: "set_active", employeeId: e.id, active: !e.active }); return e.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب"; },
-      })));
+    }) : null,
+    actionButton(e.active ? "إيقاف الحساب" : "تفعيل الحساب", {
+      cls: e.active ? "btn-sm btn-danger-quiet" : "btn-sm",
+      confirm: e.active ? `إيقاف حساب ${e.display_name}؟ سيُمنع من الدخول فوراً.` : null,
+      run: async () => { await edge("staff-admin", { action: "set_active", employeeId: e.id, active: !e.active }); return e.active ? "تم إيقاف الحساب" : "تم تفعيل الحساب"; },
+    }));
+  return h("article", { class: `person employee ${e.active ? "" : "inactive"}`, dataset: { username: e.username } },
+    h("div", { class: "person-head" },
+      h("span", { class: "avatar", attrs: { "aria-hidden": "true" }, text: initials }),
+      h("div", { class: "person-main" },
+        h("div", { class: "person-name" }, h("b", { text: e.display_name }), h("span", { class: "small muted ltr", text: e.username })),
+        h("div", { class: "small muted", text: [...perms, ...workerDepts].join(" · ") || "بلا صلاحيات" })),
+      e.active ? null : badge("موقوف", "danger")),
+    passwordBadge(e) ? h("div", { class: "person-flags" }, passwordBadge(e)) : null,
+    h("div", { class: "person-actions" },
+      e.active && workerDepts.length ? h("a", { class: "btn btn-sm btn-ghost", attrs: { href: `#/work?employee=${e.id}` }, text: e.open_tasks ? `إسناد مهمة (${e.open_tasks} مفتوحة)` : "إسناد مهمة" }) : null,
+      details("إدارة الحساب", h("div", { class: "stack" }, rolesForm, account))));
 }
 
 function departmentsSection(v) {
   const stageOpts = [{ value: "", label: "بدون مرحلة" }, ...STAGES.map((s) => ({ value: s, label: STAGE_LABEL[s] }))];
   const modeOpts = Object.entries(MODE_LABEL).map(([value, label]) => ({ value, label }));
-  return h("section", { class: "card" }, h("h2", { text: "الأقسام" }),
-    h("div", { class: "stack" }, v.departments.map((d) => h("div", { class: "card m0" },
+  return h("section", { class: "block" }, h("h2", { text: "الأقسام" }),
+    h("div", { class: "people" }, v.departments.map((d) => h("div", { class: "person dept" },
       h("div", { class: "card-row" },
         h("div", {}, h("b", { text: d.name_ar }), " ", h("span", { class: "small muted ltr", text: d.code }),
           h("div", { class: "small muted", text: `${d.stage ? STAGE_LABEL[d.stage] : "بدون مرحلة"} · ${MODE_LABEL[d.custody_mode]} · ${d.member_count} عامل` })),
-        h("div", { class: "row" }, d.active ? badge("فعّال", "ok") : badge("موقوف", "danger"),
-          d.stage && d.stage !== "CUTTING" ? (d.allow_return ? badge("الإرجاع مسموح") : badge("الإرجاع موقوف", "warn")) : null)),
+        h("div", { class: "row" }, d.active ? null : badge("موقوف", "danger"),
+          d.stage && d.stage !== "CUTTING" ? (d.allow_return ? null : badge("الإرجاع موقوف", "warn")) : null)),
       details("تعديل", actionForm({
         submit: "حفظ",
         children: [h("div", { class: "inline-fields" },
@@ -180,8 +183,8 @@ export async function render({ parts }) {
   if (parts[1] === "adjustments") return adjustments();
   const v = await rpc("app_admin_view");
   return h("div", {},
-    pageHead("الإدارة", "الموظفون وصلاحياتهم وأقسامهم ومهامهم، والأقسام.", h("a", { class: "btn btn-ghost", attrs: { href: "#/admin/adjustments" }, text: "تصحيح الكميات" })),
-    h("section", { class: "card" }, h("h2", { text: "الموظفون" }), createEmployeeForm(v.departments),
-      v.employees.length ? h("div", { class: "stack mt" }, v.employees.map((e) => employeeCard(e, v))) : empty("لا يوجد موظفون")),
+    pageHead("الإدارة", null, h("a", { class: "btn btn-secondary", attrs: { href: "#/admin/adjustments" }, text: "تصحيح الكميات" })),
+    h("section", { class: "block" }, h("h2", {}, "الموظفون ", badge(String(v.employees.length))), createEmployeeForm(v.departments),
+      v.employees.length ? h("div", { class: "people mt" }, v.employees.map((e) => employeeCard(e, v))) : empty("لا يوجد موظفون")),
     departmentsSection(v));
 }

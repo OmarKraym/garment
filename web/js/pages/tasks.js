@@ -2,10 +2,10 @@
 //   1. receive what was sent to me   2. (cutter) orders to cut   3. pass my pieces to the next stage
 //   4. my extra assignments, if any.
 import { operation, rpc } from "../api.js";
-import { badge, details, empty, field, h, input, pageHead, select } from "../dom.js";
-import { actionForm, int, optional } from "../forms.js";
+import { badge, details, field, fmtDate, h, input, pageHead, routeRail, select } from "../dom.js";
+import { actionButton, actionForm, int, optional } from "../forms.js";
 import { DEFECT_REASONS, STAGE_LABEL, stageRank } from "../labels.js";
-import { transferCard } from "./transfers.js";
+import { partialReceiveForm } from "./transfers.js";
 import { progressForm } from "./work.js";
 
 const qtyInput = (name, max, value, label) =>
@@ -46,10 +46,13 @@ function cutOrderCard(o, depts) {
     },
   });
   return h("article", { class: "card m0 cut-order", dataset: { order: o.order_code } },
-    h("div", { class: "card-row" },
-      h("div", {}, h("b", { class: "ltr", text: o.order_code }), ` — ${o.product_name}${o.model_code ? ` (${o.model_code})` : ""}`,
-        h("div", { class: "small muted" }, `${o.customer_name} · التسليم `, h("span", { class: "num", text: o.due_date })),
-        o.notes ? h("div", { class: "small", text: o.notes }) : null)),
+    h("div", { class: "ticket-head" },
+      h("div", {}, h("div", { class: "ticket-code ltr", text: o.order_code }),
+        h("div", { class: "ticket-sub", text: `${o.product_name}${o.model_code ? ` (${o.model_code})` : ""} — ${o.customer_name}` })),
+      badge("جديدة للقص", "primary")),
+    routeRail("CUTTING"),
+    h("div", { class: "small muted" }, "التسليم للزبون ", h("span", { class: "num", text: o.due_date })),
+    o.notes ? h("div", { class: "alert warn small", text: `ملاحظة المشرف: ${o.notes}` }) : null,
     h("div", { class: "mt" }, form));
 }
 
@@ -251,11 +254,12 @@ function orderCard(g, v, showCustody) {
     else main = passTable(g, good, next);
   }
   return h("article", { class: "card m0 stock-group", dataset: { order: g.order_code } },
-    h("div", { class: "card-row" },
-      h("div", {}, h("b", { class: "ltr", text: g.order_code }), ` — ${g.product_name}`,
-        showCustody ? h("div", { class: "small", text: g.custody_label }) : null,
-        h("div", { class: "small muted" }, "التسليم للزبون: ", h("span", { class: "num", text: g.due_date }))),
+    h("div", { class: "ticket-head" },
+      h("div", {}, h("div", { class: "ticket-code ltr", text: g.order_code }),
+        h("div", { class: "ticket-sub" }, g.product_name, showCustody ? ` — ${g.custody_label}` : "")),
       h("div", { class: "row" }, badge(`سليم ${sum(good)}`, "ok"), bad.length ? badge(`معيب ${sum(bad)}`, "danger") : null)),
+    routeRail(g.stage),
+    h("div", { class: "small muted" }, "التسليم للزبون ", h("span", { class: "num", text: g.due_date })),
     h("div", { class: "hidden-totals" }, h("span", { class: "good-total", text: sum(good) }), h("span", { class: "bad-total", text: sum(bad) })),
     main ? h("div", { class: "mt" }, main) : null,
     bad.length ? h("div", { class: "alert warn mt", text: `قطع معيبة: ${bad.map((l) => `${lineName(l)} (${l.qty})`).join("، ")} — أصلحها، أو أرجعها، أو ينتظر قرار المشرف.` }) : null,
@@ -263,6 +267,49 @@ function orderCard(g, v, showCustody) {
       good.length ? details("تسجيل عيب", defectForm(good, v)) : null,
       bad.length ? details("تسجيل إصلاح", repairForm(bad, v)) : null,
       prev.length && here?.allow_return ? details(`إرجاع إلى ${prev.length === 1 ? prev[0].name : STAGE_LABEL[prev[0].stage]}`, returnForm(g.lines, prev)) : null));
+}
+
+// ---------------------------------------------------------------- 1. what was sent to me, one card per order
+function groupIncoming(rows) {
+  const map = new Map();
+  for (const t of rows) {
+    const k = `${t.order_code}|${t.from_custody_id}|${t.to_custody_id}|${t.direction}`;
+    if (!map.has(k)) map.set(k, { ...t, items: [] });
+    map.get(k).items.push(t);
+  }
+  return [...map.values()];
+}
+
+function incomingCard(g) {
+  const total = g.items.reduce((s, t) => s + t.pending_qty, 0);
+  const back = g.direction === "RETURN";
+  const reasons = [...new Set(g.items.map((t) => t.reason).filter(Boolean))];
+  const receive = actionButton(`استلام الكل (${total})`, {
+    cls: "btn-block",
+    run: async (op) => {
+      const r = await op.run("app_receive_batch", (requestKey) => ({ p: { requestKey, transferIds: g.items.map((t) => t.id) } }));
+      return `تم استلام ${r?.quantity ?? total} قطعة`;
+    },
+  });
+  return h("article", { class: "card m0 incoming", dataset: { order: g.order_code } },
+    h("div", { class: "ticket-head" },
+      h("div", {}, h("div", { class: "ticket-code ltr", text: g.order_code }),
+        h("div", { class: "ticket-sub" }, "من ", h("b", { text: g.from_label }), ` · ${fmtDate(g.created_at)}`)),
+      h("div", { class: "row" },
+        back ? badge("مُرجعة إليك", "warn") : null,
+        g.items.some((t) => t.condition === "DEFECTIVE") ? badge("فيها معيب", "danger") : null,
+        g.age_hours >= 24 ? badge(`منذ ${g.age_hours} ساعة`, "warn") : null)),
+    reasons.length ? h("div", { class: "alert warn", text: `سبب الإرجاع: ${reasons.join("، ")}` }) : null,
+    h("div", { class: "table-wrap" }, h("table", { class: "lines" },
+      h("thead", {}, h("tr", {}, h("th", { text: "اللون / المقاس" }), h("th", { class: "num", text: "العدد" }))),
+      h("tbody", {}, g.items.map((t) => h("tr", {},
+        h("td", {}, `${t.color} / ${t.size}`, t.condition === "DEFECTIVE" ? h("span", { class: "badge danger sm", text: "معيب" }) : null),
+        h("td", { class: "num", text: t.pending_qty })))),
+      g.items.length > 1 ? h("tfoot", {}, h("tr", {}, h("th", { text: "المجموع" }), h("th", { class: "num", text: total }))) : null)),
+    h("div", { class: "card-actions" }, receive),
+    details("العدد لا يطابق؟ سجّل الفرق", h("div", { class: "stack" },
+      h("p", { class: "small muted", text: "اختر السطر الذي فيه نقص أو زيادة. ما لم يُطابق يبقى «خلافاً» حتى يُحل." }),
+      g.items.map((t) => h("div", { class: "sub-panel" }, h("b", { text: `${t.color} / ${t.size} — ${t.pending_qty}` }), partialReceiveForm(t))))));
 }
 
 // ---------------------------------------------------------------- page
@@ -275,27 +322,29 @@ export async function render({ me }) {
     rpc("app_work_view"),
   ]);
   const myTasks = work.mine.filter((a) => ["ASSIGNED", "IN_PROGRESS"].includes(a.status));
+  const groups = groupLines(stock.lines);
+  const toCut = cutting ? cutting.orders.length + cutting.replacements.length : 0;
   const sections = [];
 
   if (incoming.rows.length) {
-    sections.push(h("section", { class: "card section-incoming" },
-      h("h2", {}, "بانتظار استلامك ", badge(String(incoming.rows.length), "warn")),
-      h("p", { class: "small muted", text: "عُدّ القطع ثم أكّد الاستلام. إن نقص شيء سجّله كفرق." }),
-      h("div", { class: "stack" }, incoming.rows.map((t) => transferCard(t, incoming)))));
+    const inc = groupIncoming(incoming.rows);
+    sections.push(h("section", { class: "block section-incoming" },
+      h("h2", {}, "وصلتك ", badge(String(inc.length), "warn")),
+      h("p", { class: "section-hint", text: "عُدّ القطع، ثم اضغط «استلام الكل»." }),
+      h("div", { class: "stack" }, inc.map(incomingCard))));
   }
-  if (cutting) {
-    sections.push(h("section", { class: "card" }, h("h2", { text: "طلبيات للقص" }),
+  if (toCut) {
+    sections.push(h("section", { class: "block" }, h("h2", {}, "للقص ", badge(String(toCut))),
       cutting.replacements.length ? h("div", { class: "stack" }, h("h3", { text: "قص بديل معتمد من المشرف" }),
         cutting.replacements.map((r) => replacementCard(r, cutting.depts))) : null,
-      cutting.orders.length ? h("div", { class: "stack" }, cutting.orders.map((o) => cutOrderCard(o, cutting.depts)))
-        : empty("لا توجد طلبيات بانتظار القص")));
+      cutting.orders.length ? h("div", { class: "stack" }, cutting.orders.map((o) => cutOrderCard(o, cutting.depts))) : null));
   }
-  const groups = groupLines(stock.lines);
-  sections.push(h("section", { class: "card" }, h("h2", { text: "في عهدتك" }),
-    groups.length ? h("div", { class: "stack" }, groups.map((g) => orderCard(g, stock, stock.custodies.length > 1)))
-      : empty(stock.custodies.length ? "لا توجد قطع عندك الآن" : "لست عضواً في أي قسم. تواصل مع مدير النظام.")));
+  if (groups.length) {
+    sections.push(h("section", { class: "block" }, h("h2", {}, "عندك الآن ", badge(String(groups.length))),
+      h("div", { class: "stack" }, groups.map((g) => orderCard(g, stock, stock.custodies.length > 1)))));
+  }
   if (myTasks.length) {
-    sections.push(h("section", { class: "card" }, h("h2", { text: "تكليفاتي" }),
+    sections.push(h("section", { class: "block" }, h("h2", { text: "تكليفاتي" }),
       h("div", { class: "stack" }, myTasks.map((a) => h("div", { class: "card m0" },
         h("div", { class: "card-row" },
           h("div", {}, h("b", { class: "ltr", text: a.order_code }), ` — ${a.color} / ${a.size} · ${a.department_name}`,
@@ -303,5 +352,11 @@ export async function render({ me }) {
           h("span", { class: "num", text: `${a.completed_qty} / ${a.assigned_qty}` })),
         progressForm(a, work.can_cancel))))));
   }
-  return h("div", {}, pageHead("مهامي", "استلم ما وصلك، ثم مرّر القطع للمرحلة التالية."), sections);
+  if (!sections.length) {
+    sections.push(h("div", { class: "empty-state" },
+      h("div", { class: "empty-mark", attrs: { "aria-hidden": "true" } }),
+      h("h2", { text: stock.custodies.length || cutter ? "لا يوجد عمل بانتظارك" : "لم تُضف إلى أي قسم بعد" }),
+      h("p", { text: stock.custodies.length || cutter ? "ستظهر هنا القطع فور إرسالها إليك." : "تواصل مع مدير النظام ليضيفك إلى قسمك." })));
+  }
+  return h("div", {}, pageHead("مهامي"), sections);
 }
