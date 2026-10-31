@@ -303,6 +303,22 @@ test("reports reconcile, CSV export is injection-safe and audited, order closes"
   await expect(page.locator(".alert.error")).toBeVisible();                    // the login no longer exists
   await expect(page.locator(".topbar")).toHaveCount(0);
   await login("boss", PW.boss);
+
+  // the supervisor deletes an order created by mistake (nothing cut yet): it disappears from the list
+  await go("#/orders/new");
+  await page.getByLabel("الزبون", { exact: true }).fill("زبون بالخطأ");
+  await page.getByLabel("تاريخ التسليم المطلوب").fill(new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10));
+  await page.getByLabel("المنتج").fill("طلبية خاطئة");
+  await page.getByLabel(/^الألوان/).fill("أحمر");
+  await page.getByLabel(/^المقاسات/).fill("S");
+  await page.getByLabel(/^المقاسات/).blur();
+  await page.getByLabel("أحمر — S").fill("3");
+  await act(() => page.getByRole("button", { name: "حفظ وإرسال للقص" }).click(), "وإرسالها للقص");
+  const wrong = /PO-\d{4}-\d{4}/.exec(await page.locator("h1").textContent())[0];
+  await act(() => page.getByRole("button", { name: "حذف الطلبية" }).click(), `تم حذف الطلبية ${wrong}`);
+  await go("#/orders?filter=all");
+  await expect(page.locator("main")).not.toContainText(wrong);
+  await expect(page.getByRole("link", { name: ORDER })).toBeVisible();          // other orders untouched
   for (const p of ["#/", "#/tasks", "#/transfers?tab=all", "#/work", "#/quality?all=1", "#/warehouse", "#/reports?type=movements", "#/account"]) {
     await go(p);
     await page.screenshot({ path: test.info().outputPath(`${p.replace(/\W+/g, "_")}.png`), fullPage: true });

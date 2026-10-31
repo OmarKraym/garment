@@ -217,6 +217,40 @@ describe("concurrency and idempotency", () => {
   });
 });
 
+describe("deleting an order", () => {
+  it("admin or supervisor only, only before any cutting; the order disappears everywhere", async () => {
+    const { orderId, lineId } = await releasedOrder("DELORD", 4);
+    assert.equal((await sup.call("app_get_order", { p_id: orderId })).can_delete, true);
+    assert.equal((await cutter.call("app_get_order", { p_id: orderId })).can_delete, false);
+    await rejects(cutter.call("app_delete_order", { p_id: orderId }), "FORBIDDEN");
+    await rejects(rev.call("app_delete_order", { p_id: orderId }), "FORBIDDEN");
+    // an open assignment blocks it
+    const { ids } = await sup.call("app_create_assignments", { p: { orderLineId: lineId, departmentId: t.depts.SEWING, employeeIds: [tailorA.employeeId], quantity: 1 } });
+    await rejects(sup.call("app_delete_order", { p_id: orderId }), "BUSINESS_RULE");
+    await sup.call("app_update_assignment", { p_id: ids[0], p: { completedQty: 0, status: "CANCELLED" } });
+    const r = await sup.call("app_delete_order", { p_id: orderId });
+    assert.equal(r.ok, true);
+    await rejects(sup.call("app_get_order", { p_id: orderId }), "NOT_FOUND");
+    await rejects(sup.call("app_delete_order", { p_id: orderId }), "NOT_FOUND");
+    assert.equal((await sup.call("app_list_orders", { p_filter: "all", p_search: null })).some((o) => o.id === orderId), false);
+    assert.equal((await cutter.call("app_cutting_view")).orders.some((o) => o.id === orderId), false);
+    await rejects(cut(lineId, 1), "BUSINESS_RULE");                                 // nothing can be cut for it any more
+    const audit = (await t.pool.query("SELECT actor_employee_id, metadata FROM factory.audit_events WHERE action = 'order.delete' AND target_id = $1", [orderId])).rows[0];
+    assert.equal(audit.actor_employee_id, sup.employeeId);
+    // the system administrator can delete too
+    const { orderId: o2 } = await releasedOrder("DELORD2", 2);
+    assert.equal((await admin.call("app_delete_order", { p_id: o2 })).ok, true);
+  });
+  it("is refused once pieces were cut (they are in the ledger)", async () => {
+    const { orderId, lineId } = await releasedOrder("DELCUT", 3);
+    await cut(lineId, 1);
+    assert.equal((await sup.call("app_get_order", { p_id: orderId })).can_delete, false);
+    await rejects(sup.call("app_delete_order", { p_id: orderId }), "BUSINESS_RULE");
+    assert.equal((await sup.call("app_get_order", { p_id: orderId })).status, "RELEASED");
+    await balanced();
+  });
+});
+
 describe("deleting an employee account", () => {
   const del = (u, confirm = u.username) => t.callAs("service_role", null, "svc_delete_employee", { p_caller: admin.authId, p_employee: u.employeeId, p_confirm: confirm });
   it("is refused while pieces, transfers or assignments are still in the person's hands", async () => {

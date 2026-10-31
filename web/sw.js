@@ -4,7 +4,7 @@
 //    (shared factory phones), and requests to Supabase (data, sign-in, Edge Functions) are not touched.
 //  - Network first: every update reaches users as soon as they are online; the cache is only a fallback.
 //  - Nothing is written while offline: the database is the only source of truth.
-const VERSION = "2026-10-30.10";
+const VERSION = "2026-10-31.1";
 const CACHE = `garment-shell-${VERSION}`;
 const SHELL = [
   "", "index.html", "manifest.webmanifest", "css/app.css",

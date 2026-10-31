@@ -144,6 +144,17 @@ async function orderDetail({ me }, id) {
     actions.push(actionButton("إرسال للقص", { confirm: "إرسال الطلبية للقصاص؟ بعد الإرسال تُعدَّل الكميات فقط.", run: async () => { await rpc("app_release_order", { p_id: id }); return "تم إرسال الطلبية للقص"; } }));
     actions.push(actionButton("إلغاء المسودة", { cls: "btn-ghost", confirm: "إلغاء هذه المسودة؟", run: async () => { await rpc("app_cancel_order", { p_id: id }); return "تم إلغاء الطلبية"; } }));
   }
+  if (o.can_delete) {
+    actions.push(actionButton("حذف الطلبية", {
+      cls: "btn-danger-quiet",
+      confirm: `حذف الطلبية ${o.order_code} نهائياً؟ ستختفي من كل القوائم ولا يمكن التراجع.`,
+      run: async () => {
+        await rpc("app_delete_order", { p_id: id });
+        location.hash = "#/orders";
+        return `تم حذف الطلبية ${o.order_code}`;
+      },
+    }));
+  }
   if (o.can_manage && o.status === "RELEASED") {
     actions.push(actionButton("إغلاق الطلبية", { cls: "btn-secondary", confirm: "إغلاق الطلبية؟ يُسمح فقط إذا لم تبقَ منها قطع في الإنتاج أو المخزن.", run: async () => { await rpc("app_close_order", { p_id: id }); return "تم إغلاق الطلبية"; } }));
   }
