@@ -4,7 +4,7 @@ Arabic RTL, mobile-first garment custody tracking connected to the existing **ga
 
 ## Current delivery
 
-The new `wip` database schema is deployed and starts **empty**. Existing `factory` production history, employee records, authentication accounts and Edge Functions remain intact. The new frontend is prepared on `feat/wip-custody-rebuild`; the public site changes only when that branch is merged into `main` and the existing Pages workflow succeeds.
+The new `wip` database schema is deployed and starts **empty**. Existing `factory` production history, employee records, authentication accounts and Edge Functions remain intact. The frontend is published from `web/` by the existing GitHub Pages workflow when changes reach `main`. The implementation and review history are in [PR #1](https://github.com/OmarKraym/garment/pull/1).
 
 Sign in with the existing factory username and password. `legacy.html#/admin` opens existing staff management; `legacy.html#/account` changes passwords, including temporary passwords. Those retained pages use the existing local assets and SDK. Staff management remains available instead of replacing real authentication with a four-digit browser PIN.
 
@@ -43,7 +43,7 @@ All active factory accounts can read the production snapshot; station writes rem
 
 `tests/wip/dom.cjs` passed using JSDOM with a synthetic fixture: login, create-order form, color chips, all station renders, dashboard, SHA-256 verification and tamper rejection, account binding form and delete guard. This is **not** a visual or real-browser end-to-end test.
 
-`tests/wip/browser.cjs` is supplied for 390px/1440px layouts and offline-shell behavior. It could not run here: Chromium failed with `socket() failed: Operation not permitted`; the separate browser could not reach the local preview. Real Supabase login, PWA installation and responsive appearance still need browser validation.
+`tests/wip/browser.cjs` passed in Chromium on GitHub Actions at 390px and 1440px: RTL, horizontal overflow, login and order forms using a mocked backend, audit verification, typed confirmation, cut-variant quantities and offline shell reload. Screenshots were saved as a workflow artifact. [Successful browser test run](https://github.com/OmarKraym/garment/actions/runs/43082443441). Local Chromium was blocked by a socket restriction, so `.github/workflows/wip-checks.yml` runs these checks in a GitHub runner instead. Real Supabase credential login and the operating-system installation prompt still need a user-device test.
 
 Strix repository discovery could not complete because authentication repeatedly requested reconnection. No Strix scan was launched and no scan results are claimed.
 
@@ -72,7 +72,7 @@ The test fixture is synthetic. The SQL test is intended for an empty WIP databas
 7. A separate new staff-account administration interface; existing administration is retained.
 8. WebSocket live updates; open screens refresh every 15 seconds when no form is open.
 9. Tamper-proof evidence against a privileged database administrator.
-10. Completed browser/installation validation or a completed Strix penetration test.
+10. User-device installation validation, real credential login testing or a completed Strix penetration test.
 
 ## Sources
 
