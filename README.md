@@ -1,109 +1,85 @@
-# نظام إدارة إنتاج مصنع الملابس
+# عهدة — Garment WIP custody tracker
 
-تطبيق ويب قابل للتثبيت (PWA) مبني بـ HTML وCSS وJavaScript فقط، بلا خطوة بناء، ويعمل على **Supabase**.
-الوثيقة المرجعية للمتطلبات: `PROJECT_BLUEPRINT.md`.
+Arabic RTL, mobile-first garment custody tracking connected to the existing **garment-production-dev** Supabase project (`vtbenbngmpwzcqmixtzb`). The new frontend consists of `web/index.html` and `web/sw.js`: plain HTML/CSS/JavaScript, no build, frameworks, external fonts or CDN. The manifest and PNG icons are embedded in the HTML.
 
-## كيف يعمل الأمان
+## Current delivery
 
-| الطبقة | ما الذي تفعله |
-|---|---|
-| المتصفح | يعرض الشاشات فقط. **لا يصل إلى أي جدول.** يستدعي دوال `app_*` بعد تسجيل الدخول، ودالتَي Edge فقط. |
-| قاعدة البيانات | كل قواعد العمل داخل دوال PostgreSQL (`SECURITY DEFINER`، `search_path` ثابت). الجداول في مخطط `factory` غير المكشوف، وRLS مفعّل بلا سياسات، ولا صلاحيات لأدوار الواجهة على أي جدول. |
-| دوال Edge | `staff-admin` (إنشاء حساب، إعادة تعيين كلمة مرور، إيقاف/تفعيل، حذف) و`account` (تغيير كلمة المرور). مفتاح الخدمة موجود هنا فقط. كل عملية يعاد التحقق منها داخل قاعدة البيانات أيضاً (دوال `svc_*`). |
-| الصفحة | سياسة CSP صارمة، مكتبة Supabase محلية بتوقيع SRI، بناء العناصر بـ `textContent` فقط (لا `innerHTML`)، تسجيل الدخول محفوظ على الجهاز حتى الضغط على «خروج» (الإيقاف أو الحذف من المدير يُنهيه فوراً)، وحماية ملفات CSV من حقن الصيغ. |
+The new `wip` database schema is deployed and starts **empty**. Existing `factory` production history, employee records, authentication accounts and Edge Functions remain intact. The frontend is published from `web/` by the existing GitHub Pages workflow when changes reach `main`. The implementation and review history are in [PR #1](https://github.com/OmarKraym/garment/pull/1).
 
-قواعد الكميات: كل حركة مخزون تمر عبر `factory.post_event` فقط، مع قفل الصفوف، ومنع الرصيد السالب، وعدم تكرار العملية عند إعادة المحاولة (`requestKey`)، وسجل لا يُعدّل ولا يُحذف.
+Sign in with the existing factory username and password. `legacy.html#/admin` opens existing staff management; `legacy.html#/account` changes passwords, including temporary passwords. Those retained pages use the existing local assets and SDK. Staff management remains available instead of replacing real authentication with a four-digit browser PIN.
 
-## رابط النظام
-**https://omarkraym.github.io/garment/** — يُنشر تلقائياً من مجلد `web/` عند كل رفع إلى الفرع `main` (ملف `.github/workflows/pages.yml`).
-GitHub Pages لا يقرأ ملف `_headers`: سياسة CSP فعّالة لأنها داخل `index.html`، لكن `frame-ancestors` وHSTS لا تعملان هناك. للإنتاج يُفضَّل Cloudflare Pages أو Netlify.
+The attachment requested local-only storage, but the user's latest instruction selected Supabase. Therefore production data is shared through Supabase and **writes require connectivity**. `Store` owns local preferences and session storage only. Production snapshots are held in memory, never in localStorage or the service-worker cache. The shell can open offline, but an offline page reload cannot display production data until a connection returns.
 
-## تطبيق قابل للتثبيت (PWA)
-- يُثبَّت على أندرويد والحاسوب من زر «تثبيت التطبيق» في صفحة «حسابي» أو من قائمة المتصفح، وعلى آيفون من Safari: مشاركة ← «إضافة إلى الشاشة الرئيسية».
-- يفتح بملء الشاشة بأيقونته الخاصة، وتفتح الواجهة حتى بدون إنترنت.
-- **لا تُحفظ بيانات العمل على الجهاز أبداً** (الهواتف مشتركة بين العمال)، ولا تُسجَّل أي عملية دون اتصال: يظهر شريط «لا يوجد اتصال»، وعند عودة الاتصال تُحمَّل البيانات تلقائياً.
-- التحديثات تصل فوراً عند الاتصال (الشبكة أولاً، والنسخة المحفوظة احتياط فقط). عند تعديل أي ملف ثابت غيّر `VERSION` في `web/sw.js`، وأضف أي ملف جديد إلى قائمة `SHELL` (اختبار آلي يتحقق من ذلك).
-- يتطلب HTTPS (أو localhost).
+## Workflow
 
-## محتويات المشروع
+1. Supervisor creates an order, chooses color/size chips and planned quantity.
+2. Cutter records the **total cut for each color/size**, then sends quantities to named tailors. The order's actual cut total is derived from all lots. This resolves the original prompt's missing per-variant allocation rule.
+3. Every destination except cutter receives pending stock. Only confirmed active stock can move onward. Confirm-all runs in one database transaction.
+4. Tailor → finishing 1 → press → finishing 2 → warehouse. Return routes are checked in PostgreSQL, require a reason, and obey the shared returns switch. Finishing 1 selects a specific tailor for rework.
+5. Warehouse confirmation closes an order only when all cut pieces are active in warehouse and no other positive custody remains.
 
+Returned pieces already back at cutter count as cutter stock. Lowering a variant's cut total is blocked below the quantity **currently outside cutter**, rather than lifetime gross dispatches, which can count a reworked piece multiple times.
+
+## Roles and accounts
+
+Existing ADMIN can operate all stations and manage settings; SUPERVISOR can create orders; REVIEWER can use the audit dashboard. Workers can write only their assigned department, and tailors only their linked custody. Existing sewing employees were automatically linked to tailor records; the initial roster has 20 tailors. Administrators can add/rename/deactivate tailors and link new sewing accounts in Settings. A tailor with stock cannot be deactivated or reassigned to a different account.
+
+All active factory accounts can read the production snapshot; station writes remain restricted. This is a single-factory operational visibility model, not a multi-company or confidential per-worker reporting model.
+
+## Integrity and security
+
+- Public RPC wrappers are `SECURITY INVOKER`. Checked implementations live in the unexposed `wip` schema with a fixed empty search path.
+- Every request resolves the current active employee from `auth.uid()` and existing role tables; user-editable metadata is not trusted.
+- All new tables have RLS and no direct client table grants. Anonymous users cannot execute WIP RPCs. Client code contains only the existing publishable key.
+- One locked settings row serializes writes for this small factory. Stock mutations, confirmations and movement hashes commit atomically. Request IDs prevent duplicate mutation on retry.
+- A SHA-256 chain hashes the previous hash plus the exact canonical payload text returned by PostgreSQL. This detects changed exported/client records; it is **not** proof against an administrator who can rewrite the whole database and recompute hashes.
+- JSON restore is admin-only and atomic. It checks hashes, variant membership, quantity conservation and the complete movement ledger against restored balances. Invalid imports roll back. Reset/restore require typed confirmation and an additional confirmation dialog, and are logged in the original factory audit log.
+- CSV is UTF-8 with BOM and neutralizes spreadsheet-formula prefixes. UI-generated user text is escaped; no inline event-handler strings are used.
+- WhatsApp only opens after a user selects the summary action and follows the review link; it never sends a message automatically.
+
+## Validation performed
+
+`tests/wip/database.sql` passed against the real Supabase PostgreSQL database inside a rolled-back transaction: conservation; overspending; pending-stock block; route enforcement; cut lower bound; disabled returns; idempotent retry; request-key payload mismatch; named rework and confirmation; worker role and holder isolation; chain hashes; restore; tampered record rejection; table/function grants; automatic closure.
+
+`tests/wip/dom.cjs` passed using JSDOM with a synthetic fixture: login, create-order form, color chips, all station renders, dashboard, SHA-256 verification and tamper rejection, account binding form and delete guard. This is **not** a visual or real-browser end-to-end test.
+
+`tests/wip/browser.cjs` passed in Chromium on GitHub Actions at 390px and 1440px: RTL, horizontal overflow, login and order forms using a mocked backend, audit verification, typed confirmation, cut-variant quantities and offline shell reload. Screenshots were saved as a workflow artifact. [Successful browser test run](https://github.com/OmarKraym/garment/actions/runs/43082443441). Local Chromium was blocked by a socket restriction, so `.github/workflows/wip-checks.yml` runs these checks in a GitHub runner instead. Real Supabase credential login and the operating-system installation prompt still need a user-device test.
+
+Strix repository discovery could not complete because authentication repeatedly requested reconnection. No Strix scan was launched and no scan results are claimed.
+
+Supabase Advisor reported deny-by-default RLS/no-policy informational findings and security-definer warnings for the existing API functions and new checked private RPC implementations. It also reported that leaked-password protection is disabled. These are documented findings, not a claim that the project is fully security-audited.
+
+## Running checks
+
+```sh
+python -m http.server 8080 --directory web
+# In another terminal, with jsdom 26.1.0 available:
+node tests/wip/dom.cjs
+# With Playwright and a working Chromium installation:
+CHROMIUM_PATH=/path/to/chromium node tests/wip/browser.cjs
 ```
-web/                    الموقع (هذا فقط ما يُنشر)
-  index.html            الصفحة الوحيدة + CSP
-  manifest.webmanifest  بيانات التثبيت (الاسم، الأيقونات، RTL)
-  sw.js                 Service Worker (ملفات الواجهة فقط، لا بيانات)
-  icons/                أيقونات التطبيق
-  _headers              ترويسات الأمان للاستضافة (Netlify / Cloudflare Pages)
-  js/config.js          رابط Supabase والمفتاح العام فقط
-  js/pages/*.js         الشاشات
-supabase/migrations/    001–010: الجداول، المحرك، الكتابة، القراءة، الصلاحيات، تهيئة الموظفين، مسار صاحب المصنع، الاستلام الجماعي، حذف الحساب، حذف الطلبية
-supabase/seed.sql       الأقسام الستة الافتراضية
-supabase/functions/     دالتا Edge
-tests/                  للتطوير فقط، لا تُنشر
-```
 
-## حالة المشروع على Supabase (`vtbenbngmpwzcqmixtzb`)
-تم تنفيذه: قاعدة البيانات (001–010 + الأقسام الستة)، ونشر دالتَي Edge، ووضع المفتاح العام في `config.js`. تم التحقق من أن الدوال الـ 85 على Supabase مطابقة حرفياً للنسخة المختبرة، ومن الصلاحيات، وباختبار تشغيل على PostgreSQL 17 تم التراجع عنه.
-**المتبقي عليك:** الخطوات 2 و3 و7 أدناه. (أول مدير تم إنشاؤه وربطه.)
+The test fixture is synthetic. The SQL test is intended for an empty WIP database and rolls itself back. It deliberately refuses to seed over real orders. Do not remove that guard.
 
-## مسار العمل (كما حدده صاحب المصنع)
-1. **المشرف** ← «الطلبيات» ← «طلبية جديدة»: الزبون والمنتج والتاريخ، ثم الألوان والمقاسات في جدول (لون × مقاس) والكمية في كل خانة. **رقم الطلبية تلقائي** (`PO-2026-0001`). زر «حفظ وإرسال للقص» يرسلها للقصاص مباشرة.
-2. **القصاص** ← «مهامي» ← «طلبيات للقص»: يعدّل **الكميات فقط** (الألوان والمقاسات ثابتة، ولا تقل عن المقصوص)، ويسجّل ما قصّه.
-3. **القصاص** ← «في عهدتك»: يختار الخياطين، فيظهر عمود لكل خياط، و«وزّع بالتساوي» يملأ الجدول؛ ضغطة «توزيع» واحدة ترسل الطلبية كلها (كل شيء أو لا شيء).
-4. **الخياط** ← «مهامي»: يستلم الطلبية كاملة بضغطة «استلام الكل» (أو يسجّل فرقاً لسطر معيّن)، ثم إما «تمرير إلى التشطيب الأول» أو «إرجاع إلى قسم القص» مع السبب.
-5. **التشطيب الأول ← الكي ← التشطيب الثاني ← المخزن**: كل قسم يستلم ثم يمرر الطلبية كاملة بضغطة واحدة (الأرقام معبأة مسبقاً).
-6. **الإرجاع** للمرحلة السابقة فقط ومع ذكر السبب. يستطيع **مدير النظام** إيقاف الإرجاع لأي قسم من «الإدارة» ← الأقسام ← تعديل.
-7. لا تحويل داخل نفس المرحلة ولا تخطّي مراحل؛ القاعدة مطبّقة داخل قاعدة البيانات وليس في الواجهة فقط.
-8. **حذف الطلبية** (مدير النظام أو المشرف): زر «حذف الطلبية» في صفحة الطلبية. متاح فقط **قبل بدء القص**؛ بعدها تكون القطع مسجلة في الإنتاج فتُغلق الطلبية بدل حذفها. الطلبية المحذوفة تختفي من كل القوائم والتقارير، ويُسجَّل من حذفها في سجل التدقيق. رقمها لا يُعاد استخدامه.
-9. ما زال متاحاً كأدوات مساندة: العيوب والإصلاح وقرار المشرف بالإتلاف، وتصحيح الكميات من المدير، و«تكليفات العمل» للمشرف والمدير.
+## What is intentionally not in v1
 
-## إضافة الموظفين (من صفحة «الإدارة»)
-1. المدير يدخل اسم المستخدم والاسم الظاهر، ويختار **الصلاحيات** (مدير، مشرف، مراجع) و**الأقسام** التي يعمل فيها الموظف.
-2. **النظام يُنشئ كلمة مرور مؤقتة** عشوائية (مثل `Kp7m-X3qa-9Rtd`) وتظهر للمدير **مرة واحدة فقط** ليسلّمها للموظف. لا تُحفظ في أي مكان.
-3. الكلمة المؤقتة صالحة **72 ساعة**. عند أول دخول يُجبر الموظف على اختيار كلمة مرور جديدة، ولا يستطيع تنفيذ أي عملية قبل ذلك. بعد التغيير تتوقف الكلمة المؤقتة نهائياً.
-4. إذا نسيها الموظف أو انتهت مدتها: زر «إصدار كلمة مرور مؤقتة جديدة» في بطاقة الموظف.
-5. **المهام:** زر «إسناد مهمة» في بطاقة الموظف يفتح صفحة المهام والموظف محدد مسبقاً. المهام تُسند على أوامر إنتاج مطلقة، ويستطيع المدير والمشرف إلغاءها.
-6. **حذف الحساب** (مدير النظام فقط): «إدارة الحساب» ← «حذف الحساب»، ثم كتابة اسم المستخدم للتأكيد. يُحذف حساب الدخول نهائياً، ويختفي الموظف من القوائم، ويصبح اسم المستخدم متاحاً من جديد، بينما يبقى اسمه في السجلات السابقة (السجل لا يُحذف). يُرفض الحذف إذا كانت لديه قطع في عهدته أو تحويلات بانتظار استلامه أو تكليفات مفتوحة، ولا يستطيع المدير حذف حسابه. للإيقاف المؤقت استخدم «إيقاف الحساب».
-7. **لا تُنشئ حسابات من لوحة Supabase مباشرة** (عدا أول مدير)، فالنظام لن يربطها بموظف.
+1. Offline inventory writes or delayed transfer synchronization.
+2. Local-only production storage or offline production history after reload.
+3. QR/barcode scanning and label printing.
+4. Purchasing, payroll or costing.
+5. Customer delivery/shipment tracking in the new tracker.
+6. Multi-company tenancy within the new WIP schema.
+7. A separate new staff-account administration interface; existing administration is retained.
+8. WebSocket live updates; open screens refresh every 15 seconds when no form is open.
+9. Tamper-proof evidence against a privileged database administrator.
+10. User-device installation validation, real credential login testing or a completed Strix penetration test.
 
-## خطوات التشغيل على Supabase (مرة واحدة)
+## Sources
 
-1. **قاعدة البيانات:** نفّذ ملفات `supabase/migrations/001…005` بالترتيب، ثم `supabase/seed.sql`. *(تم)*
-2. **إيقاف التسجيل الذاتي:** Authentication → Sign In / Providers → عطّل *Allow new users to sign up*. (الحسابات ينشئها المدير فقط.)
-3. **إعدادات دوال Edge** (اختيارية للتجربة على `http://localhost:8080`، فلها قيم افتراضية؛ **مطلوبة عند النشر** لإضافة رابط موقعك): Edge Functions → Secrets:
-   - `ALLOWED_ORIGINS` = رابط موقعك بالضبط، مثل `https://factory.example.com` (وللتجربة على حاسوبك أضف `,http://localhost:8080`)
-   - `STAFF_EMAIL_DOMAIN` = `staff.factory.invalid` (يجب أن يطابق `web/js/config.js`)
-4. **نشر دالتي Edge:** `staff-admin` و`account` (مع مجلد `_shared`)، مع إبقاء *Verify JWT* مفعّلاً. *(تم)*
-5. **أول مدير نظام:** Authentication → Users → Add user:
-   البريد `admin@staff.factory.invalid` (أو اسم آخر بنفس النطاق)، كلمة مرور قوية، وفعّل *Auto confirm*.
-   ثم في SQL Editor:
-   ```sql
-   SELECT public.svc_provision_employee(
-     NULL, (SELECT id FROM auth.users WHERE email = 'admin@staff.factory.invalid'),
-     'admin', 'مدير النظام', '[{"role": "ADMIN"}]');
-   ```
-   هذا يعمل مرة واحدة فقط (يُرفض إذا وُجد مدير فعّال).
-6. **الواجهة:** ضع المفتاح العام (publishable) في `web/js/config.js`. *(تم)* وإذا تغيّر رابط المشروع فحدّثه في `config.js` و`index.html` و`_headers`.
-7. **النشر:** ارفع مجلد `web/` فقط إلى استضافة ثابتة تدعم HTTPS والترويسات (Cloudflare Pages أو Netlify). ملف `_headers` يضيف منع التضمين في إطارات وHSTS.
+- User attachment: `garment-wip-pwa-prompt.md` and latest instruction to use the existing Supabase project.
+- [Supabase database function security](https://supabase.com/docs/guides/database/functions) — checked through Context7.
+- [Supabase RLS advisor](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
+- [Supabase security-definer advisor](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+- [Supabase leaked-password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
-### إعدادات يُنصح بها قبل الاستخدام الفعلي
-- **CAPTCHA** لتسجيل الدخول (Authentication → Attack Protection) لتقليل تخمين كلمات المرور.
-- **خطة Pro** للنسخ الاحتياطي اليومي وعدم إيقاف المشروع بعد أسبوع خمول.
-- راجع حدود المحاولات في Authentication → Rate Limits.
-
-## القيود المعروفة (بصراحة)
-- **لا يوجد قفل حساب بعد محاولات فاشلة لكل اسم مستخدم** على خطة Free/Pro؛ الموجود هو حدّ المحاولات لكل عنوان IP من Supabase، ويمكن إضافة CAPTCHA. القفل لكل حساب يحتاج Password Verification Hook المتاح في Team/Enterprise.
-- تحذيرات Supabase Advisor من نوع *authenticated security definer function executable* متوقعة: هذه الدوال هي الواجهة المقصودة، وكل واحدة تتحقق من المستخدم ودوره بنفسها.
-- اختبارات الواجهة الكاملة تعمل على خادم محلي يحاكي بروتوكول Supabase بنفس دوال قاعدة البيانات ونفس كود دوال Edge؛ تسجيل الدخول الحقيقي في Supabase Auth يجب تجربته يدوياً بعد النشر.
-
-## تجربة سريعة على حاسوبك مع Supabase الحقيقي
-بعد الخطوات 2 و3 و5: من داخل مجلد `web` شغّل `python -m http.server 8080` ثم افتح `http://localhost:8080`.
-
-## الاختبارات (للمطوّر)
-يتطلب Node 20+ وPostgreSQL 16 محلي.
-```bash
-npm install
-npm test               # 43 اختبار لقاعدة البيانات ودوال Edge
-npm run test:e2e       # الواجهة كاملة + PWA: حاسوب + هاتف 360px
-npm run serve          # نظام تجريبي على http://127.0.0.1:4173  (admin / Admin#Pass2026، بيانات وهمية)
-```
+The prior application's setup and operating instructions are retained in [LEGACY.md](LEGACY.md).
