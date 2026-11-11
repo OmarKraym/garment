@@ -1,0 +1,44 @@
+name: WIP browser checks
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "tests/wip/**"
+      - ".github/workflows/wip-checks.yml"
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install isolated test dependencies
+        run: npm install --prefix "$RUNNER_TEMP/wip-checks" --no-package-lock --no-audit --no-fund jsdom@26.1.0 playwright@1.63.0
+      - name: Install Chromium
+        run: "$RUNNER_TEMP/wip-checks/node_modules/.bin/playwright install --with-deps chromium"
+      - name: Test application logic
+        run: NODE_PATH="$RUNNER_TEMP/wip-checks/node_modules" node tests/wip/dom.cjs
+      - name: Test phone and desktop in Chromium
+        env:
+          NODE_PATH: ${{ runner.temp }}/wip-checks/node_modules
+        run: |
+          python3 -m http.server 8080 --directory web > "$RUNNER_TEMP/wip-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent http://127.0.0.1:8080/ > /dev/null; then break; fi
+            sleep 1
+          done
+          export CHROMIUM_PATH="$(node -p 'require("playwright").chromium.executablePath()')"
+          node tests/wip/browser.cjs
+      - name: Save screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wip-browser-screenshots
+          path: /tmp/garment-*.png
+          if-no-files-found: ignore
